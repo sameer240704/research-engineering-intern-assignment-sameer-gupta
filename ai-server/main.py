@@ -1,20 +1,16 @@
-# app/main.py
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import json
-import pandas as pd
-import numpy as np
-from typing import List, Dict, Optional, Any
-from datetime import datetime, timedelta
+from typing import Optional
+from datetime import datetime
 import os
-from neo4j import GraphDatabase
-import re
-from collections import Counter
-import networkx as nx
-import community
 import groq
 from dotenv import load_dotenv
+from python_types.types import SearchQuery, ChatMessage, Neo4jConnection
+from services.chatbot_service import extract_query_terms, generate_groq_response_with_model, detect_response_length
+from services.neo4j_service import query_neo4j_for_general_stats
+from services.misc_service import process_reddit_data, detect_communities
+from services.init_neo4j import create_graph_database
 
 load_dotenv()
 
@@ -30,194 +26,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class Neo4jConnection:
-    def __init__(self, uri, user, password):
-        self.driver = GraphDatabase.driver(uri, auth=(user, password))
-        
-    def close(self):
-        self.driver.close()
-        
-    def query(self, query, parameters=None):
-        with self.driver.session() as session:
-            result = session.run(query, parameters)
-            return [record for record in result]
-
 neo4j_connection = Neo4jConnection(
     uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
     user=os.getenv("NEO4J_USER", "neo4j"),
     password=os.getenv("NEO4J_PASSWORD", "Sameer4224")
-)
+)   
 
-# Data classes
-class RedditPost(BaseModel):
-    kind: str
-    data: Dict[str, Any]
 
-class SearchQuery(BaseModel):
-    query: str
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    subreddits: Optional[List[str]] = None
-    
-class ChatMessage(BaseModel):
-    message: str
-
-# Helper functions
-def process_reddit_data(jsonl_file="data/data.jsonl"):
-    """Process the Reddit data from a JSONL file."""
-    data = []
-    with open(jsonl_file, 'r', encoding='utf-8') as f:
-        for line in f:
-            try:
-                post = json.loads(line)
-                data.append(post)
-            except json.JSONDecodeError:
-                continue
-    return data
-
-def generate_groq_response(prompt, max_tokens=1000):
-    """Generate a response using the Groq API."""
-    try:
-        response = groq_client.chat.completions.create(
-            model="llama3-8b-8192", 
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
-            temperature=0.7,
-            top_p=0.9
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"Error generating response: {str(e)}"
-    
-def detect_communities(nodes, links):
-    """Detect communities in the network graph."""
-    graph = nx.Graph()
-    
-    # Add nodes
-    for node in nodes:
-        graph.add_node(node["id"], group=node["group"])
-    
-    # Add edges
-    for link in links:
-        graph.add_edge(link["source"], link["target"], weight=link["value"])
-    
-    # Detect communities
-    partition = community.best_partition(graph)
-    
-    # Add community information to nodes
-    for node in nodes:
-        node["community"] = partition[node["id"]]
-    
-    return nodes
-
-def create_graph_database(data):
-    """Create a graph database from the Reddit data."""
-    # Clear existing data
-    neo4j_connection.query("MATCH (n) DETACH DELETE n")
-    
-    # Create constraints and indexes
-    neo4j_connection.query("CREATE CONSTRAINT IF NOT EXISTS FOR (s:Subreddit) REQUIRE s.name IS UNIQUE")
-    neo4j_connection.query("CREATE CONSTRAINT IF NOT EXISTS FOR (a:Author) REQUIRE a.name IS UNIQUE")
-    neo4j_connection.query("CREATE CONSTRAINT IF NOT EXISTS FOR (p:Post) REQUIRE p.id IS UNIQUE")
-    
-    # Create nodes and relationships
-    for post in data:
-        if "data" not in post:
-            continue
-            
-        post_data = post["data"]
-        
-        # Create Post node
-        neo4j_connection.query(
-            """
-            MERGE (p:Post {id: $id})
-            SET p.title = $title, 
-                p.selftext = $selftext, 
-                p.created_utc = $created_utc,
-                p.score = $score,
-                p.num_comments = $num_comments,
-                p.upvote_ratio = $upvote_ratio
-            """,
-            {
-                "id": post_data.get("name", ""),
-                "title": post_data.get("title", ""),
-                "selftext": post_data.get("selftext", ""),
-                "created_utc": post_data.get("created_utc", 0),
-                "score": post_data.get("score", 0),
-                "num_comments": post_data.get("num_comments", 0),
-                "upvote_ratio": post_data.get("upvote_ratio", 0)
-            }
-        )
-        
-        # Create Subreddit node and relationship
-        if "subreddit" in post_data:
-            neo4j_connection.query(
-                """
-                MERGE (s:Subreddit {name: $name})
-                WITH s
-                MATCH (p:Post {id: $post_id})
-                MERGE (p)-[:POSTED_IN]->(s)
-                """,
-                {
-                    "name": post_data["subreddit"],
-                    "post_id": post_data.get("name", "")
-                }
-            )
-        
-        # Create Author node and relationship
-        if "author" in post_data and post_data["author"] != "[deleted]":
-            neo4j_connection.query(
-                """
-                MERGE (a:Author {name: $name})
-                WITH a
-                MATCH (p:Post {id: $post_id})
-                MERGE (p)-[:AUTHORED_BY]->(a)
-                """,
-                {
-                    "name": post_data["author"],
-                    "post_id": post_data.get("name", "")
-                }
-            )
-            
-        # Extract and create Topic nodes
-        if "selftext" in post_data and post_data["selftext"]:
-            topics = extract_topics_from_text(post_data["selftext"])
-            for topic in topics:
-                neo4j_connection.query(
-                    """
-                    MERGE (t:Topic {name: $name})
-                    WITH t
-                    MATCH (p:Post {id: $post_id})
-                    MERGE (p)-[:DISCUSSES]->(t)
-                    """,
-                    {
-                        "name": topic,
-                        "post_id": post_data.get("name", "")
-                    }
-                )
-
-def extract_topics_from_text(text, num_topics=5):
-    """Extract topics from text using LDA."""
-    if not text or len(text) < 50:
-        return []
-        
-    # Basic preprocessing
-    cleaned_text = re.sub(r'[^\\w\\s]', '', text.lower())
-    
-    # Simple keyword extraction based on frequency
-    words = cleaned_text.split()
-    word_freq = Counter(words)
-    
-    # Remove common stopwords
-    stopwords = {'the', 'and', 'is', 'of', 'to', 'a', 'in', 'that', 'this', 'it', 'for', 'on', 'with', 'as', 'by'}
-    for word in stopwords:
-        if word in word_freq:
-            del word_freq[word]
-    
-    # Return top words as topics
-    return [word for word, _ in word_freq.most_common(num_topics)]
-
-# Endpoint to initialize the database
 @app.post("/api/init-database")
 async def init_database():
     """Initialize the Neo4j graph database with data from the JSONL file."""
@@ -228,7 +43,6 @@ async def init_database():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Endpoint to get time series data
 @app.get("/api/time-series")
 async def get_time_series(
     query: Optional[str] = Query(None),
@@ -238,16 +52,15 @@ async def get_time_series(
 ):
     """Get time series data for posts matching the query."""
     try:
-        # Build Neo4j query based on parameters
         cypher_query = """
-        MATCH (p:Post)
+        MATCH (p:Post)-[:POSTED_IN]->(s:Subreddit)
         """
         
         where_clauses = []
         params = {}
         
         if query:
-            where_clauses.append("(p.title CONTAINS $query OR p.selftext CONTAINS $query)")
+            where_clauses.append("(toLower(p.title) CONTAINS toLower($query) OR toLower(p.selftext) CONTAINS toLower($query))")
             params["query"] = query
             
         if start_date:
@@ -262,27 +75,31 @@ async def get_time_series(
             
         if subreddits:
             subreddit_list = [s.strip() for s in subreddits.split(",")]
-            where_clauses.append("EXISTS { MATCH (p)-[:POSTED_IN]->(s:Subreddit) WHERE s.name IN $subreddit_list }")
+            where_clauses.append("s.name IN $subreddit_list")
             params["subreddit_list"] = subreddit_list
             
         if where_clauses:
             cypher_query += "WHERE " + " AND ".join(where_clauses)
             
         cypher_query += """
-        RETURN date(datetime({epochSeconds: toInteger(p.created_utc)})) as date, count(*) as count
+        RETURN date(datetime({epochSeconds: toInteger(p.created_utc)})) as date, count(p) as count
         ORDER BY date
         """
         
         result = neo4j_connection.query(cypher_query, params)
         
-        # Format the result
         time_series_data = [{"date": record["date"].isoformat(), "count": record["count"]} for record in result]
         
-        return time_series_data
+        if not time_series_data:
+            print("Query returned no data")
+            return {"data": [], "message": "No matching posts found for the given criteria"}
+            
+        return {"data": time_series_data}
+        
     except Exception as e:
+        print(f"Error in time_series endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
     
-# Endpoint to get community distribution
 @app.get("/api/community-distribution")
 async def get_community_distribution(
     query: Optional[str] = Query(None),
@@ -323,14 +140,12 @@ async def get_community_distribution(
         
         result = neo4j_connection.query(cypher_query, params)
         
-        # Format the result
         distribution_data = [{"name": record["subreddit"], "value": record["count"]} for record in result]
         
         return distribution_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Endpoint to get topic trends
 @app.get("/api/topic-trends")
 async def get_topic_trends(
     start_date: Optional[str] = Query(None),
@@ -372,7 +187,6 @@ async def get_topic_trends(
         
         result = neo4j_connection.query(cypher_query, params)
         
-        # Format the result
         topic_data = [{"topic": record["topic"], "count": record["count"]} for record in result]
         
         return topic_data
@@ -389,7 +203,6 @@ async def get_network_graph(
 ):
     """Get a network graph of authors and subreddits with filters."""
     try:
-        # Build Neo4j query based on parameters
         cypher_query = """
         MATCH (a:Author)-[:AUTHORED_BY]-(p:Post)-[:POSTED_IN]->(s:Subreddit)
         """
@@ -426,7 +239,6 @@ async def get_network_graph(
         
         result = neo4j_connection.query(cypher_query, params)
         
-        # Process and organize the data
         nodes = []
         links = []
         subreddit_nodes = set()
@@ -440,26 +252,22 @@ async def get_network_graph(
                 subreddit_nodes.add(subreddit)
                 links.append({"source": author, "target": subreddit, "value": 1})
         
-        # Add nodes
         for author in author_nodes:
             nodes.append({"id": author, "group": 1, "type": "author"})
             
         for subreddit in subreddit_nodes:
             nodes.append({"id": subreddit, "group": 2, "type": "subreddit"})
         
-        # Detect communities
         nodes = detect_communities(nodes, links)
         
         return {"nodes": nodes, "links": links}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
-# Endpoint for AI analysis
+
 @app.post("/api/ai-analysis")
 async def get_ai_analysis(search_query: SearchQuery):
     """Get AI-powered analysis of the search results."""
     try:
-        # Build Neo4j query based on parameters
         cypher_query = """
         MATCH (p:Post)
         """
@@ -495,10 +303,8 @@ async def get_ai_analysis(search_query: SearchQuery):
         
         result = neo4j_connection.query(cypher_query, params)
         
-        # Extract post data for analysis
         posts = [{"title": record["title"], "content": record["selftext"], "score": record["score"]} for record in result]
         
-        # Prepare data for Groq API analysis
         post_texts = "\n\n".join([f"Title: {post['title']}\nContent: {post['content'][:500]}..." for post in posts])
         
         prompt = f"""
@@ -516,39 +322,93 @@ async def get_ai_analysis(search_query: SearchQuery):
         Be concise and insightful.
         """
         
-        # Generate analysis using Groq API
-        analysis = generate_groq_response(prompt)
+        analysis = generate_groq_response_with_model(prompt, model_name="llama3-8b-8192")
         
         return {"analysis": analysis}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-# Endpoint for chatbot
 @app.post("/api/chatbot")
 async def chatbot(message: ChatMessage):
-    """Interact with a chatbot to query the social media data."""
+    """
+    Interact with a chatbot that uses two models in sequence:
+    1. gemma2-9b-it to refine the user's prompt
+    2. llama3-8b-8192 to generate the final response based on Neo4j data and JSON file data
+    """
     try:
         user_message = message.message
+
+        response_length = detect_response_length(user_message)
         
-        # Generate a prompt for the Groq API
-        prompt = f"""
-        You are an assistant helping with social media data analysis. Answer the following question using the available data:
+        query_terms = extract_query_terms(user_message)
         
+        neo4j_data = query_neo4j_for_general_stats(query_terms)
+        
+        json_file_path = os.path.join("data", "data.json")
+        try:
+            with open(json_file_path, 'r') as file:
+                json_data = json.load(file)
+        except Exception as e:
+            print(f"Error loading JSON file: {str(e)}")
+            json_data = {"error": "Could not load JSON data file"}
+        
+        refiner_prompt = f"""
+        You are an expert prompt engineer. Your job is to refine the following user question 
+        to help extract the most relevant information from a Neo4j graph database containing Reddit posts.
+
         User question: {user_message}
-        
-        When answering:
-        - Focus on providing data-driven insights
-        - Be concise but informative
-        - If you need specific data that isn't available, explain why and suggest alternatives
-        - Connect trends to broader social context when relevant
-        
-        Your answer:
+
+        Available data context: 
+        {json.dumps(neo4j_data, indent=2)}
+
+        Additional JSON data:
+        {json.dumps(json_data, indent=2)}
+
+        Please refine this query to:
+        1. Be specific about what data to retrieve from the database
+        2. Clarify ambiguous terms
+        3. Focus on extracting factual information present in the database
+        4. Include specific filtering criteria if implied in the original question
+        5. Ensure the refined query can be answered in ONE SENTENCE if the user requested a concise response
+
+        Return ONLY the refined prompt without explanation or additional text.
         """
         
-        # Use Groq API to generate a response
-        response = generate_groq_response(prompt)
+        refined_prompt = generate_groq_response_with_model(refiner_prompt, "gemma2-9b-it", 500)
         
-        return {"response": response}
+        final_prompt = f"""
+        You are a data analyst assistant specialized in answering questions about Reddit posts data.
+        
+        Answer the following question using ONLY the Neo4j data and JSON file data provided below:
+        
+        Refined question: {refined_prompt}
+        
+        Database context (Reddit posts data):
+        {json.dumps(neo4j_data, indent=2)}
+        
+        Additional JSON data:
+        {json.dumps(json_data, indent=2)}
+        
+        Guidelines:
+        - ONLY use information from the provided data contexts
+        - If the data doesn't contain information to answer the question, clearly state that
+        - Format your response in a clear, concise way if the user requested a short answer
+        - Provide detailed analysis if the user requested a detailed answer
+        - Include specific data points from the contexts when possible
+        - If you see patterns or trends in the data, highlight them
+        - DO NOT make up information not present in the data
+        """
+        
+        final_response = generate_groq_response_with_model(final_prompt, "llama3-8b-8192", 1000)
+
+        if response_length == "concise":
+            final_response = generate_groq_response_with_model(
+                f"Summarize this in one sentence: {final_response}", 
+                "llama3-8b-8192", 
+                100
+            )
+        
+        return {"response": final_response}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

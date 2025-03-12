@@ -1,167 +1,216 @@
-"use client";
-
-import { useEffect, useRef, useState } from "react";
-import { Network } from "vis-network";
-import { DataSet } from "vis-data";
+import React, { useEffect, useRef } from "react";
+import * as d3 from "d3";
 
 const NetworkGraph = ({ nodes, links }) => {
-  const graphRef = useRef(null);
-  const [networkInstance, setNetworkInstance] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [graphStats, setGraphStats] = useState({
-    nodes: 0,
-    edges: 0,
-  });
+  const svgRef = useRef(null);
+  const tooltipRef = useRef(null);
 
   useEffect(() => {
-    if (!graphRef.current || !nodes || !links || nodes.length === 0) {
-      setLoading(true);
-      return;
+    if (!nodes.length || !links.length) return;
+
+    // Clear previous graph
+    d3.select(svgRef.current).selectAll("*").remove();
+
+    // Get dimensions of the parent container
+    const container = svgRef.current.parentElement;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    // Create svg
+    const svg = d3
+      .select(svgRef.current)
+      .attr("width", width)
+      .attr("height", height)
+      .attr("viewBox", [0, 0, width, height]);
+
+    // Create tooltip
+    const tooltip = d3
+      .select(tooltipRef.current)
+      .style("position", "absolute")
+      .style("visibility", "hidden")
+      .attr(
+        "class",
+        "bg-white dark:bg-slate-800 p-3 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg text-sm"
+      );
+
+    // Add zoom functionality
+    const zoom = d3
+      .zoom()
+      .scaleExtent([0.5, 5])
+      .on("zoom", (event) => {
+        g.attr("transform", event.transform);
+      });
+
+    svg.call(zoom);
+
+    // Create main group for the graph
+    const g = svg.append("g");
+
+    // Create link force simulation
+    const simulation = d3
+      .forceSimulation(nodes)
+      .force(
+        "link",
+        d3
+          .forceLink(links)
+          .id((d) => d.id)
+          .distance(100)
+      )
+      .force("charge", d3.forceManyBody().strength(-300))
+      .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("x", d3.forceX(width / 2).strength(0.1))
+      .force("y", d3.forceY(height / 2).strength(0.1));
+
+    // Define color scale for nodes based on community
+    const communityColors = d3
+      .scaleOrdinal()
+      .domain([...new Set(nodes.map((node) => node.community))])
+      .range(d3.schemeCategory10);
+
+    // Create links
+    const link = g
+      .append("g")
+      .attr("stroke", "#999")
+      .attr("stroke-opacity", 0.6)
+      .selectAll("line")
+      .data(links)
+      .join("line")
+      .attr("stroke-width", (d) => Math.sqrt(d.value || 1))
+      .attr("stroke", "#cbd5e1");
+
+    // Create nodes
+    const node = g
+      .append("g")
+      .selectAll(".node")
+      .data(nodes)
+      .join("g")
+      .attr("class", "node")
+      .call(drag(simulation));
+
+    // Add circles to nodes
+    node
+      .append("circle")
+      .attr("r", (d) => Math.sqrt((d.weight || 5) * 2))
+      .attr("fill", (d) => communityColors(d.community || "default"))
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 1.5)
+      .on("mouseover", function (event, d) {
+        // Show tooltip on hover
+        tooltip
+          .style("visibility", "visible")
+          .html(
+            `
+            <div>
+              <p class="font-medium text-slate-900 dark:text-white">${d.id}</p>
+              <p class="text-slate-600 dark:text-slate-300">Community: ${
+                d.community || "N/A"
+              }</p>
+              <p class="text-blue-600 dark:text-blue-400">Weight: ${
+                d.weight || "N/A"
+              }</p>
+            </div>
+          `
+          )
+          .style("left", event.pageX + 15 + "px")
+          .style("top", event.pageY - 30 + "px");
+
+        d3.select(this)
+          .attr("stroke", communityColors(d.community || "default"))
+          .attr("stroke-width", 3);
+      })
+      .on("mouseout", function () {
+        tooltip.style("visibility", "hidden");
+        d3.select(this).attr("stroke", "#fff").attr("stroke-width", 1.5);
+      });
+
+    // Add text labels to nodes
+    node
+      .append("text")
+      .text((d) => (d.id.length > 10 ? d.id.substring(0, 10) + "..." : d.id))
+      .attr("font-size", "10px")
+      .attr("dx", 12)
+      .attr("dy", 4)
+      .attr("fill", "#64748b")
+      .style("pointer-events", "none");
+
+    // Add title to the visualization
+    svg
+      .append("text")
+      .attr("x", width / 2)
+      .attr("y", 20)
+      .attr("text-anchor", "middle")
+      .style("font-size", "14px")
+      .style("fill", "#64748b")
+      .text("Network Connections");
+
+    // Update node positions on each tick
+    simulation.on("tick", () => {
+      link
+        .attr("x1", (d) => d.source.x)
+        .attr("y1", (d) => d.source.y)
+        .attr("x2", (d) => d.target.x)
+        .attr("y2", (d) => d.target.y);
+
+      node.attr("transform", (d) => `translate(${d.x},${d.y})`);
+    });
+
+    // Drag behavior function
+    function drag(simulation) {
+      function dragstarted(event) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        event.subject.fx = event.subject.x;
+        event.subject.fy = event.subject.y;
+      }
+
+      function dragged(event) {
+        event.subject.fx = event.x;
+        event.subject.fy = event.y;
+      }
+
+      function dragended(event) {
+        if (!event.active) simulation.alphaTarget(0);
+        event.subject.fx = null;
+        event.subject.fy = null;
+      }
+
+      return d3
+        .drag()
+        .on("start", dragstarted)
+        .on("drag", dragged)
+        .on("end", dragended);
     }
 
-    setLoading(true);
+    // Resize handler
+    const handleResize = () => {
+      const newWidth = container.clientWidth;
+      const newHeight = container.clientHeight;
 
-    try {
-      // Transform nodes to add more visual properties
-      const enhancedNodes = nodes.map((node) => ({
-        id: node.id,
-        label: node.id, // Use the node ID as the label
-        group: node.group || 0, // Default to group 0 if not provided
-        type: node.type || "author", // Default to "author" if not provided
-        community: node.community || 0, // Default to community 0 if not provided
-        size: 15, // Fixed size for all nodes
-        font: { size: 14 },
-        color: {
-          background: getNodeColor(node.community || 0), // Use community for color
-          border: "#ffffff",
-          highlight: { background: "#ff8800", border: "#ffffff" },
-        },
-      }));
+      svg
+        .attr("width", newWidth)
+        .attr("height", newHeight)
+        .attr("viewBox", [0, 0, newWidth, newHeight]);
 
-      // Transform edges to have better visual properties
-      const enhancedEdges = links.map((edge) => ({
-        from: edge.source,
-        to: edge.target,
-        value: edge.value || 1, // Default to 1 if not provided
-        width: 1 + (edge.value || 1) * 3, // Scale width based on value
-        color: { color: "rgba(180, 180, 180, 0.7)", highlight: "#ff8800" },
-        smooth: { type: "continuous" },
-      }));
+      simulation
+        .force("center", d3.forceCenter(newWidth / 2, newHeight / 2))
+        .force("x", d3.forceX(newWidth / 2).strength(0.1))
+        .force("y", d3.forceY(newHeight / 2).strength(0.1))
+        .alpha(0.3)
+        .restart();
+    };
 
-      // Create datasets
-      const nodesDataset = new DataSet(enhancedNodes);
-      const edgesDataset = new DataSet(enhancedEdges);
+    window.addEventListener("resize", handleResize);
 
-      const data = {
-        nodes: nodesDataset,
-        edges: edgesDataset,
-      };
-
-      // Network visualization options
-      const options = {
-        nodes: {
-          shape: "dot",
-          borderWidth: 2,
-          shadow: true,
-        },
-        edges: {
-          width: 2,
-          shadow: true,
-        },
-        interaction: {
-          hover: true,
-          navigationButtons: true,
-          keyboard: true,
-          tooltipDelay: 300,
-        },
-        physics: {
-          stabilization: {
-            iterations: 200,
-          },
-          barnesHut: {
-            gravitationalConstant: -2000,
-            springConstant: 0.04,
-            springLength: 95,
-          },
-        },
-      };
-
-      // Create network
-      const network = new Network(graphRef.current, data, options);
-
-      // Set network instance to state for potential later use
-      setNetworkInstance(network);
-
-      // Update graph stats
-      setGraphStats({
-        nodes: enhancedNodes.length,
-        edges: enhancedEdges.length,
-      });
-
-      // Add event listeners
-      network.on("stabilizationProgress", function (params) {
-        // You could implement a progress bar here
-      });
-
-      network.on("stabilizationIterationsDone", function () {
-        setLoading(false);
-      });
-
-      // Clean up on unmount
-      return () => {
-        if (network) {
-          network.destroy();
-        }
-      };
-    } catch (error) {
-      console.error("Error creating network graph:", error);
-      setLoading(false);
-    }
+    // Cleanup
+    return () => {
+      simulation.stop();
+      window.removeEventListener("resize", handleResize);
+    };
   }, [nodes, links]);
 
-  // Function to generate colors based on community number
-  const getNodeColor = (community) => {
-    const colors = [
-      "#4285F4", // Google Blue
-      "#EA4335", // Google Red
-      "#FBBC05", // Google Yellow
-      "#34A853", // Google Green
-      "#7B1FA2", // Purple
-      "#0097A7", // Teal
-      "#FB8C00", // Orange
-      "#795548", // Brown
-    ];
-
-    return colors[community % colors.length];
-  };
-
   return (
-    <div className="relative">
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80 z-10">
-          <div className="text-center">
-            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-            <p className="text-gray-700">Building network graph...</p>
-          </div>
-        </div>
-      )}
-
-      {nodes && nodes.length > 0 ? (
-        <>
-          <div className="absolute top-2 right-2 z-10 bg-white p-2 rounded shadow-md text-xs text-gray-600">
-            Nodes: {graphStats.nodes} | Connections: {graphStats.edges}
-          </div>
-          <div
-            ref={graphRef}
-            className="border rounded-lg bg-white"
-            style={{ height: "500px", width: "100%" }}
-          />
-        </>
-      ) : (
-        <div className="flex justify-center items-center h-64 text-gray-500">
-          No network data available
-        </div>
-      )}
+    <div className="w-full h-full relative">
+      <svg ref={svgRef} className="w-full h-full"></svg>
+      <div ref={tooltipRef}></div>
     </div>
   );
 };

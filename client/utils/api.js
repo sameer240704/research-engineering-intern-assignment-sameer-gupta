@@ -24,21 +24,21 @@ export async function initDatabase() {
 
 export const fetchTimeSeries = async (query, startDate, endDate, subreddits) => {
     const response = await axios.get(`${API_BASE_URL}/api/time-series`, {
-        // params: { query, start_date: startDate, end_date: endDate, subreddits },
+        params: { query, start_date: startDate, end_date: endDate, subreddits },
     });
     return response.data;
 };
 
 export const fetchCommunityDistribution = async (query, startDate, endDate) => {
     const response = await axios.get(`${API_BASE_URL}/api/community-distribution`, {
-        // params: { query, start_date: startDate, end_date: endDate },
+        params: { query, start_date: startDate, end_date: endDate },
     });
     return response.data;
 };
 
 export const fetchNetworkGraph = async (query, startDate, endDate, subreddits, limit) => {
     const response = await axios.get(`${API_BASE_URL}/api/network-graph`, {
-        // params: { query, start_date: startDate, end_date: endDate, subreddits, limit },
+        params: { query, start_date: startDate, end_date: endDate, subreddits, limit },
     });
     return response.data;
 };

@@ -1,97 +1,68 @@
-import { Line } from "react-chartjs-2";
+import React from "react";
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
   Tooltip,
+  ResponsiveContainer,
   Legend,
-  Filler,
-} from "chart.js";
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
+} from "recharts";
 
 const TimeSeriesChart = ({ data }) => {
-  // Handle empty data case
-  if (!data || data.length === 0) {
-    return (
-      <div className="text-center py-10 text-gray-500">No data available</div>
-    );
-  }
+  // Process data to ensure dates are formatted correctly
+  const processedData = data.map((item) => ({
+    ...item,
+    date: new Date(item.date).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    }),
+  }));
 
-  const chartData = {
-    labels: data.map((item) => item.date),
-    datasets: [
-      {
-        label: "Posts",
-        data: data.map((item) => item.count),
-        borderColor: "rgba(56, 189, 248, 1)",
-        backgroundColor: "rgba(56, 189, 248, 0.1)",
-        borderWidth: 2,
-        pointBackgroundColor: "rgba(56, 189, 248, 1)",
-        pointBorderColor: "#fff",
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        tension: 0.3,
-        fill: true,
-      },
-    ],
-  };
-
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: "top",
-      },
-      tooltip: {
-        backgroundColor: "rgba(0, 0, 0, 0.8)",
-        titleFont: {
-          size: 14,
-        },
-        bodyFont: {
-          size: 13,
-        },
-        padding: 12,
-        cornerRadius: 6,
-        displayColors: false,
-      },
-    },
-    scales: {
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          maxRotation: 45,
-          minRotation: 45,
-        },
-      },
-      y: {
-        beginAtZero: true,
-        grid: {
-          color: "rgba(0, 0, 0, 0.05)",
-        },
-      },
-    },
+  // Custom tooltip to display date and count
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white dark:bg-slate-800 p-3 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg">
+          <p className="font-medium text-slate-900 dark:text-white">{label}</p>
+          <p className="text-emerald-600 dark:text-emerald-400">
+            <span className="font-semibold">{payload[0].value}</span> posts
+          </p>
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
-    <div style={{ height: "300px" }}>
-      <Line data={chartData} options={options} />
-    </div>
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart
+        data={processedData}
+        margin={{ top: 10, right: 30, left: 0, bottom: 5 }}
+      >
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+        <XAxis dataKey="date" tick={{ fill: "#64748b" }} tickMargin={10} />
+        <YAxis tick={{ fill: "#64748b" }} tickMargin={10} />
+        <Tooltip content={<CustomTooltip />} />
+        <Legend
+          wrapperStyle={{
+            paddingTop: 10,
+            fontSize: "14px",
+            color: "#64748b",
+          }}
+        />
+        <Line
+          type="monotone"
+          dataKey="count"
+          name="Post Count"
+          stroke="#10b981"
+          strokeWidth={3}
+          dot={{ r: 4, strokeWidth: 2, fill: "#fff" }}
+          activeDot={{ r: 6, stroke: "#059669", strokeWidth: 2 }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
   );
 };
 
