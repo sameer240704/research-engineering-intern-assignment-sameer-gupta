@@ -326,7 +326,7 @@ async def get_network_graph(
             where_clauses.append("p.created_utc <= $end_timestamp")
             params["end_timestamp"] = end_timestamp
             
-        if subreddits:
+        if subreddits and subreddits.strip():
             subreddit_list = [s.strip() for s in subreddits.split(",")]
             where_clauses.append("s.name IN $subreddit_list")
             params["subreddit_list"] = subreddit_list
