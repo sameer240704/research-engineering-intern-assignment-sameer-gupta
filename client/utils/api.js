@@ -1,26 +1,6 @@
 import axios from "axios";
 
-const API_BASE_URL = "http://127.0.0.1:8000";
-
-export async function initDatabase() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/init-database`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        return await response.json();
-    } catch (error) {
-        console.error('Error initializing database:', error);
-        throw error;
-    }
-}
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export const fetchTimeSeries = async (query, startDate, endDate, subreddits) => {
     const response = await axios.get(`${API_BASE_URL}/api/time-series`, {
