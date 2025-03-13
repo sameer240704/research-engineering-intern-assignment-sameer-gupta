@@ -433,6 +433,7 @@ export default function Home() {
                       <NetworkGraph
                         nodes={networkData.nodes}
                         links={networkData.links}
+                        summary={networkData.summary}
                       />
                     </div>
                   ) : (

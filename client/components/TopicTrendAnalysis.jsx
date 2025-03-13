@@ -41,10 +41,10 @@ const TopicTrends = ({ topicsData }) => {
   })();
 
   const renderBarChart = () => (
-    <ResponsiveContainer width="100%" height={400}>
+    <ResponsiveContainer width="100%" height={600}>
       <BarChart
         data={processedData}
-        margin={{ top: 20, right: 30, left: 20, bottom: 70 }}
+        margin={{ top: 20, right: 30, left: 20, bottom: 10 }}
       >
         <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
         <XAxis
@@ -176,14 +176,6 @@ const TopicTrends = ({ topicsData }) => {
               Most discussed topics in the selected timeframe
             </CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="icon"
-            className="bg-white/10 border-white/20 text-white hover:bg-white/20"
-            disabled={loading}
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
         </div>
       </CardHeader>
       <CardContent className="p-5">

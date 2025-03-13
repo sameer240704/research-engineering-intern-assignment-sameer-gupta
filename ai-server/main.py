@@ -366,7 +366,27 @@ async def get_network_graph(
             for node in nodes:
                 node["community"] = node["group"]  
         
-        return {"nodes": nodes, "links": links}
+        summary_prompt = f"""
+        The network graph represents the relationships between authors and subreddits based on posts. 
+        Authors are connected to subreddits if they have posted in them. 
+        The graph contains {len(author_nodes)} authors and {len(subreddit_nodes)} subreddits, with {len(links)} connections.
+        The authors are grouped into communities based on their interactions with subreddits.
+        Provide a summary of the graph, highlighting key patterns, communities, and any notable insights.
+        """
+        
+        summary_response = groq_client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[{"role": "user", "content": summary_prompt}],
+            max_tokens=1000
+        )
+
+        summary = summary_response.choices[0].message.content
+        
+        return {
+            "nodes": nodes,
+            "links": links,
+            "summary": summary
+        }
     except Exception as e:
         import traceback
         error_detail = {
@@ -472,7 +492,7 @@ async def chatbot(message: ChatMessage):
                 
             if keywords:
                 filtered_json_data = filter_json_data(json_data, keywords)
-                filtered_json_data = reduce_data_context(filtered_json_data, max_items=3)  # Limit items
+                filtered_json_data = reduce_data_context(filtered_json_data, max_items=3)  
         except Exception as e:
             print(f"JSON processing error: {str(e)}")
         
