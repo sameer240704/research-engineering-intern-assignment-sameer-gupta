@@ -8,22 +8,18 @@ const NetworkGraph = ({ nodes, links }) => {
   useEffect(() => {
     if (!nodes.length || !links.length) return;
 
-    // Clear previous graph
     d3.select(svgRef.current).selectAll("*").remove();
 
-    // Get dimensions of the parent container
     const container = svgRef.current.parentElement;
     const width = container.clientWidth;
     const height = container.clientHeight;
 
-    // Create svg
     const svg = d3
       .select(svgRef.current)
       .attr("width", width)
       .attr("height", height)
       .attr("viewBox", [0, 0, width, height]);
 
-    // Create tooltip
     const tooltip = d3
       .select(tooltipRef.current)
       .style("position", "absolute")
@@ -33,7 +29,6 @@ const NetworkGraph = ({ nodes, links }) => {
         "bg-white dark:bg-slate-800 p-3 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg text-sm"
       );
 
-    // Add zoom functionality
     const zoom = d3
       .zoom()
       .scaleExtent([0.5, 5])
@@ -43,10 +38,8 @@ const NetworkGraph = ({ nodes, links }) => {
 
     svg.call(zoom);
 
-    // Create main group for the graph
     const g = svg.append("g");
 
-    // Create link force simulation
     const simulation = d3
       .forceSimulation(nodes)
       .force(
@@ -61,13 +54,11 @@ const NetworkGraph = ({ nodes, links }) => {
       .force("x", d3.forceX(width / 2).strength(0.1))
       .force("y", d3.forceY(height / 2).strength(0.1));
 
-    // Define color scale for nodes based on community
     const communityColors = d3
       .scaleOrdinal()
       .domain([...new Set(nodes.map((node) => node.community))])
       .range(d3.schemeCategory10);
 
-    // Create links
     const link = g
       .append("g")
       .attr("stroke", "#999")
@@ -78,7 +69,6 @@ const NetworkGraph = ({ nodes, links }) => {
       .attr("stroke-width", (d) => Math.sqrt(d.value || 1))
       .attr("stroke", "#cbd5e1");
 
-    // Create nodes
     const node = g
       .append("g")
       .selectAll(".node")
@@ -87,7 +77,6 @@ const NetworkGraph = ({ nodes, links }) => {
       .attr("class", "node")
       .call(drag(simulation));
 
-    // Add circles to nodes
     node
       .append("circle")
       .attr("r", (d) => Math.sqrt((d.weight || 5) * 2))
@@ -95,7 +84,6 @@ const NetworkGraph = ({ nodes, links }) => {
       .attr("stroke", "#fff")
       .attr("stroke-width", 1.5)
       .on("mouseover", function (event, d) {
-        // Show tooltip on hover
         tooltip
           .style("visibility", "visible")
           .html(
@@ -123,7 +111,6 @@ const NetworkGraph = ({ nodes, links }) => {
         d3.select(this).attr("stroke", "#fff").attr("stroke-width", 1.5);
       });
 
-    // Add text labels to nodes
     node
       .append("text")
       .text((d) => (d.id.length > 10 ? d.id.substring(0, 10) + "..." : d.id))
@@ -133,7 +120,6 @@ const NetworkGraph = ({ nodes, links }) => {
       .attr("fill", "#64748b")
       .style("pointer-events", "none");
 
-    // Add title to the visualization
     svg
       .append("text")
       .attr("x", width / 2)
@@ -143,7 +129,6 @@ const NetworkGraph = ({ nodes, links }) => {
       .style("fill", "#64748b")
       .text("Network Connections");
 
-    // Update node positions on each tick
     simulation.on("tick", () => {
       link
         .attr("x1", (d) => d.source.x)
@@ -154,7 +139,6 @@ const NetworkGraph = ({ nodes, links }) => {
       node.attr("transform", (d) => `translate(${d.x},${d.y})`);
     });
 
-    // Drag behavior function
     function drag(simulation) {
       function dragstarted(event) {
         if (!event.active) simulation.alphaTarget(0.3).restart();
@@ -180,7 +164,6 @@ const NetworkGraph = ({ nodes, links }) => {
         .on("end", dragended);
     }
 
-    // Resize handler
     const handleResize = () => {
       const newWidth = container.clientWidth;
       const newHeight = container.clientHeight;
@@ -200,7 +183,6 @@ const NetworkGraph = ({ nodes, links }) => {
 
     window.addEventListener("resize", handleResize);
 
-    // Cleanup
     return () => {
       simulation.stop();
       window.removeEventListener("resize", handleResize);

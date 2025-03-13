@@ -6,12 +6,13 @@ import CommunityDistributionChart from "../components/CommunityDistributionChart
 import NetworkGraph from "../components/NetworkGraph";
 import AIAnalysis from "../components/AIAnalysis";
 import Chatbot from "../components/Chatbot";
+import TopicTrends from "@/components/TopicTrendAnalysis";
 import {
   fetchTimeSeries,
   fetchCommunityDistribution,
   fetchNetworkGraph,
   fetchAIAnalysis,
-  initDatabase,
+  fetchTopicTrends,
 } from "../utils/api";
 
 import { Button } from "@/components/ui/button";
@@ -31,61 +32,41 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Search,
   RefreshCw,
   BarChart3,
   Filter,
-  Database,
-  AlertCircle,
   LineChart,
   PieChart,
   Network,
   BrainCircuit,
-  MessageSquare,
 } from "lucide-react";
+import toast from "react-hot-toast";
 
 export default function Home() {
   const [timeSeriesData, setTimeSeriesData] = useState([]);
   const [communityData, setCommunityData] = useState([]);
   const [networkData, setNetworkData] = useState({ nodes: [], links: [] });
   const [analysis, setAnalysis] = useState("");
+  const [topicTrends, setTopicTrends] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [dbInitialized, setDbInitialized] = useState(false);
-  const [initializingDb, setInitializingDb] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
 
-  const [query, setQuery] = useState("anarchism");
+  const [query, setQuery] = useState("Donald Trump");
   const [startDate, setStartDate] = useState("2024-01-01");
   const [endDate, setEndDate] = useState("2025-03-13");
-  const [subreddits, setSubreddits] = useState("Anarchism,Libertarian");
-
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [subreddits, setSubreddits] = useState("Anarchism, Libertarian");
 
   useEffect(() => {
     checkData();
-
-    const handleResize = () => {
-      if (window.innerWidth > 768) {
-        setIsCollapsed(false);
-      } else {
-        setIsCollapsed(true);
-      }
-    };
-
-    window.addEventListener("resize", handleResize);
-    handleResize();
-
-    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   const checkData = async () => {
     try {
       const testData = await fetchTimeSeries(
-        "anarchism",
-        "2024-01-01",
+        "Donald Trump",
+        "2023-01-01",
         "2025-03-01",
         "Anarchism"
       );
@@ -93,51 +74,23 @@ export default function Home() {
       const data = testData.data;
 
       if (data && data.length > 0) {
-        setDbInitialized(true);
         handleSearch();
       } else {
-        setError("Database appears to be empty. Please initialize it first.");
+        toast.error(
+          "Database appears to be empty. Please initialize it first."
+        );
       }
     } catch (err) {
       console.error("Error checking data:", err);
-      setError(
+      toast.error(
         "Could not connect to database. Please check your backend connection."
       );
     }
   };
 
-  const handleInitDatabase = async () => {
-    try {
-      setInitializingDb(true);
-      setError(null);
-
-      const result = await initDatabase();
-
-      if (result && result.status === "success") {
-        setDbInitialized(true);
-        setError(null);
-
-        handleSearch();
-      } else {
-        setError("Failed to initialize database. Check backend logs.");
-      }
-    } catch (err) {
-      console.error("Error initializing database:", err);
-      setError("Failed to initialize database. Is your backend running?");
-    } finally {
-      setInitializingDb(false);
-    }
-  };
-
   const handleSearch = async () => {
-    if (!dbInitialized) {
-      setError("Please initialize the database first.");
-      return;
-    }
-
     try {
       setLoading(true);
-      setError(null);
       setFilterOpen(false);
 
       const timeSeries = await fetchTimeSeries(
@@ -158,6 +111,7 @@ export default function Home() {
         subreddits,
         100
       );
+      const topicsData = await fetchTopicTrends(startDate, endDate, subreddits);
 
       const searchQuery = {
         query,
@@ -168,15 +122,14 @@ export default function Home() {
 
       const aiAnalysis = await fetchAIAnalysis(searchQuery);
 
-      console.log(timeSeries);
-
       setTimeSeriesData(timeSeries.data);
       setCommunityData(communityDistribution);
       setNetworkData(networkGraph);
       setAnalysis(aiAnalysis.analysis);
+      setTopicTrends(topicsData);
     } catch (err) {
       console.error("Error fetching data:", err);
-      setError("Failed to fetch data. Please try again later.");
+      toast.error("Failed to fetch data. Please try again later.");
     } finally {
       setLoading(false);
     }
@@ -184,156 +137,15 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] dark:bg-[#0f172a]">
-      <div
-        className={`fixed left-0 top-0 z-40 h-full w-64 bg-white dark:bg-slate-900 shadow-lg transform transition-transform duration-300 ease-in-out ${
-          isCollapsed ? "-translate-x-full" : "translate-x-0"
-        } md:translate-x-0`}
-      >
-        <div className="h-full flex flex-col">
-          <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-              SocialInsight
-            </h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Advanced Analytics Platform
-            </p>
-          </div>
-
-          <ScrollArea className="flex-1">
-            <div className="p-4">
-              <div className="space-y-6">
-                <div>
-                  <h2 className="mb-2 text-xs uppercase font-semibold text-slate-500 dark:text-slate-400">
-                    Dashboard
-                  </h2>
-                  <div className="space-y-1">
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      <BarChart3 className="mr-2 h-4 w-4" />
-                      Overview
-                    </Button>
-                    <Dialog open={filterOpen} onOpenChange={setFilterOpen}>
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          className="w-full justify-start text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                        >
-                          <Filter className="mr-2 h-4 w-4" />
-                          Filters
-                        </Button>
-                      </DialogTrigger>
-                    </Dialog>
-                    {!dbInitialized && (
-                      <Button
-                        onClick={handleInitDatabase}
-                        variant="ghost"
-                        className="w-full justify-start text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30"
-                        disabled={initializingDb}
-                      >
-                        <Database className="mr-2 h-4 w-4" />
-                        {initializingDb ? "Initializing..." : "Initialize DB"}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <h2 className="mb-2 text-xs uppercase font-semibold text-slate-500 dark:text-slate-400">
-                    Visualizations
-                  </h2>
-                  <div className="space-y-1">
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      <LineChart className="mr-2 h-4 w-4" />
-                      Time Series
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      <PieChart className="mr-2 h-4 w-4" />
-                      Community Data
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      <Network className="mr-2 h-4 w-4" />
-                      Network Graph
-                    </Button>
-                  </div>
-                </div>
-
-                <div>
-                  <h2 className="mb-2 text-xs uppercase font-semibold text-slate-500 dark:text-slate-400">
-                    AI Features
-                  </h2>
-                  <div className="space-y-1">
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      <BrainCircuit className="mr-2 h-4 w-4" />
-                      AI Analysis
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      <MessageSquare className="mr-2 h-4 w-4" />
-                      Interactive Chat
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </ScrollArea>
-
-          <div className="p-4 border-t border-slate-200 dark:border-slate-700">
-            <div className="flex items-center space-x-3">
-              <div className="h-8 w-8 rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 flex items-center justify-center text-white font-medium">
-                AI
-              </div>
-              <div>
-                <p className="text-sm font-medium text-slate-900 dark:text-white">
-                  Social Analysis
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  v1.0.0
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile Menu Toggle */}
-      <div className="fixed top-4 left-4 z-50 md:hidden">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="rounded-full bg-white dark:bg-slate-900 shadow-md"
-        >
-          <Filter className="h-5 w-5" />
-        </Button>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="md:pl-64 transition-all duration-300">
+      <div className="transition-all duration-300 px-80 max-md:px-0 max-xl:px-10 max-2xl:px-20">
         <div className="p-4 sm:p-6 md:p-8">
-          {/* Page Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
-                Social Media Analysis
+                Social Media Analyzer
               </h1>
               <p className="text-slate-500 dark:text-slate-400 mt-1">
-                Analyze trends across platforms with live visualizations
+                Analyze trends across platforms with visualizations
               </p>
             </div>
 
@@ -358,8 +170,8 @@ export default function Home() {
                       <Input
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Enter search term"
-                        className="w-full"
+                        placeholder="Donald Trump"
+                        className="h-12 w-full"
                       />
                     </div>
 
@@ -372,7 +184,7 @@ export default function Home() {
                           type="date"
                           value={startDate}
                           onChange={(e) => setStartDate(e.target.value)}
-                          className="w-full"
+                          className="h-12 w-full"
                         />
                       </div>
 
@@ -384,7 +196,7 @@ export default function Home() {
                           type="date"
                           value={endDate}
                           onChange={(e) => setEndDate(e.target.value)}
-                          className="w-full"
+                          className="h-12 w-full"
                         />
                       </div>
                     </div>
@@ -397,14 +209,14 @@ export default function Home() {
                         value={subreddits}
                         onChange={(e) => setSubreddits(e.target.value)}
                         placeholder="Subreddit1,Subreddit2"
-                        className="w-full"
+                        className="h-12 w-full"
                       />
                     </div>
 
                     <Button
                       onClick={handleSearch}
                       className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
-                      disabled={loading || !dbInitialized}
+                      disabled={loading}
                     >
                       {loading ? (
                         <>
@@ -424,7 +236,7 @@ export default function Home() {
               <Button
                 onClick={handleSearch}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                disabled={loading || !dbInitialized}
+                disabled={loading}
               >
                 {loading ? (
                   <>
@@ -440,53 +252,9 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Database Initialization Warning */}
-          {!dbInitialized && (
-            <div className="mb-8 rounded-lg bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
-              <div>
-                <h3 className="font-medium text-amber-800">
-                  Database Not Initialized
-                </h3>
-                <p className="text-amber-700 text-sm mt-1">
-                  You need to initialize the database before you can analyze
-                  data.
-                </p>
-                <Button
-                  onClick={handleInitDatabase}
-                  className="mt-3 bg-amber-600 hover:bg-amber-700 text-white"
-                  disabled={initializingDb}
-                >
-                  {initializingDb ? (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />{" "}
-                      Initializing...
-                    </>
-                  ) : (
-                    <>
-                      <Database className="mr-2 h-4 w-4" /> Initialize Database
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Error Message */}
-          {error && (
-            <div className="mb-8 rounded-lg bg-red-50 border border-red-200 p-4 flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
-              <div>
-                <h3 className="font-medium text-red-800">Error</h3>
-                <p className="text-red-700 text-sm mt-1">{error}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Analysis Summary Card */}
           <Card className="mb-8 bg-gradient-to-r from-indigo-500/5 to-purple-500/5 border-none shadow-sm">
-            <CardContent className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <CardContent className="p-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
                 <div className="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm border border-slate-200 dark:border-slate-700">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center">
@@ -557,20 +325,19 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Main Content Tabs */}
           <Tabs defaultValue="visualizations" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-8">
+            <TabsList className="h-12 grid w-full grid-cols-2 mb-8">
               <TabsTrigger
                 value="visualizations"
-                className="data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 dark:data-[state=active]:bg-indigo-900/30 dark:data-[state=active]:text-indigo-400"
+                className="h-10 data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 dark:data-[state=active]:bg-indigo-900/30 dark:data-[state=active]:text-indigo-400"
               >
-                Data Visualizations
+                Data Visualizations & Insights
               </TabsTrigger>
               <TabsTrigger
                 value="analysis"
-                className="data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 dark:data-[state=active]:bg-indigo-900/30 dark:data-[state=active]:text-indigo-400"
+                className="h-10 data-[state=active]:bg-indigo-50 data-[state=active]:text-indigo-700 dark:data-[state=active]:bg-indigo-900/30 dark:data-[state=active]:text-indigo-400"
               >
-                AI Analysis & Chat
+                AI Analysis & Chatbot
               </TabsTrigger>
             </TabsList>
 
@@ -649,6 +416,8 @@ export default function Home() {
                 </Card>
               </div>
 
+              <TopicTrends topicsData={topicTrends} />
+
               <Card className="overflow-hidden border-none shadow-md hover:shadow-lg transition-shadow bg-white dark:bg-slate-900">
                 <CardHeader className="p-5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
                   <CardTitle className="flex items-center gap-2">
@@ -703,27 +472,13 @@ export default function Home() {
                 <CardContent className="p-5">
                   <AIAnalysis
                     analysis={
-                      analysis ||
-                      "AI analysis is currently disabled. Enable it in the code by uncommenting the related sections."
+                      analysis || "Please enter a query to get the analysis"
                     }
                   />
                 </CardContent>
               </Card>
 
-              <Card className="overflow-hidden border-none shadow-md hover:shadow-lg transition-shadow bg-white dark:bg-slate-900">
-                <CardHeader className="p-5 bg-gradient-to-r from-rose-500 to-pink-500 text-white">
-                  <CardTitle className="flex items-center gap-2">
-                    <MessageSquare className="h-5 w-5" />
-                    Interactive Chatbot
-                  </CardTitle>
-                  <CardDescription className="text-rose-100">
-                    Ask questions about the analyzed data
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-5">
-                  <Chatbot />
-                </CardContent>
-              </Card>
+              <Chatbot />
             </TabsContent>
           </Tabs>
 

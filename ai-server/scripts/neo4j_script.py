@@ -3,6 +3,11 @@ import json
 import os
 import re
 from collections import Counter
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class Neo4jInitializer:
     def __init__(self, uri, user, password):
@@ -42,50 +47,52 @@ class Neo4jInitializer:
         print("Constraints and indexes created successfully.")
     
     def extract_topics_from_text(self, text, num_topics=5):
-        """Extract topics from text using simple frequency analysis."""
+        """Extract meaningful topics from text using improved preprocessing and filtering."""
         if not text or len(text) < 50:
             return []
-            
-        # Basic preprocessing
-        cleaned_text = re.sub(r'[^\w\s]', '', text.lower())
-        
-        # Simple keyword extraction based on frequency
-        words = cleaned_text.split()
-        word_freq = Counter(words)
-        
-        # Remove common stopwords
-        stopwords = {'the', 'and', 'is', 'of', 'to', 'a', 'in', 'that', 'this', 'it', 'for', 'on', 'with', 'as', 'by',
-                    'i', 'you', 'we', 'they', 'he', 'she', 'my', 'your', 'their', 'his', 'her', 'its', 'our', 'am', 
-                    'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'but', 
-                    'or', 'if', 'because', 'as', 'until', 'while', 'at', 'from', 'after', 'over', 'under', 'again', 
-                    'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both', 
-                    'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 
-                    'so', 'than', 'too', 'very', 'can', 'will', 'just', 'should', 'now'}
-        
-        for word in list(word_freq.keys()):
-            if word in stopwords or len(word) < 3:
-                del word_freq[word]
-        
-        # Return top words as topics
+
+        cleaned_text = re.sub(r'[^\w\s]', '', text.lower())  
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text) 
+
+        words = word_tokenize(cleaned_text)
+        stop_words = set(stopwords.words('english'))
+        filtered_words = [
+            word for word in words
+            if word not in stop_words and len(word) > 2 and word.isalpha()
+        ]
+
+        filtered_words = [
+            word for word in filtered_words
+            if not self._is_repetitive_or_noisy(word)
+        ]
+
+        word_freq = Counter(filtered_words)
         return [word for word, _ in word_freq.most_common(num_topics)]
+
+    def _is_repetitive_or_noisy(self, word):
+        """Check if a word is repetitive or noisy (e.g., 'ssssssssswswwwwwsswws')."""
+        if len(set(word)) < 3: 
+            return True
+
+        if re.match(r'^(.)\1*(.)\2*$', word):  
+            return True
+
+        return False
     
     def extract_entities(self, text):
         """Extract entities from text using simple pattern matching."""
         entities = []
         
-        # Extract URLs
         url_pattern = r'https?://\S+'
         urls = re.findall(url_pattern, text)
         for url in urls:
             entities.append(("URL", url))
         
-        # Extract hashtags
         hashtag_pattern = r'#\w+'
         hashtags = re.findall(hashtag_pattern, text)
         for hashtag in hashtags:
             entities.append(("Hashtag", hashtag))
         
-        # Extract mentions
         mention_pattern = r'@\w+'
         mentions = re.findall(mention_pattern, text)
         for mention in mentions:
@@ -97,13 +104,10 @@ class Neo4jInitializer:
         """Load Reddit data from a JSONL file and create graph database."""
         print(f"Loading data from {file_path}...")
         
-        # First, clear existing data
         self.query("MATCH (n) DETACH DELETE n")
         
-        # Create constraints and indexes
         self.create_constraints_and_indexes()
         
-        # Batch processing
         batch_size = 100
         batch = []
         total_processed = 0
@@ -124,7 +128,6 @@ class Neo4jInitializer:
                     print(f"Error decoding JSON: {e}")
                     continue
         
-        # Process any remaining posts
         if batch:
             self._process_batch(batch)
             total_processed += len(batch)
@@ -142,7 +145,6 @@ class Neo4jInitializer:
             if "name" not in post_data:
                 continue
             
-            # Create Post node
             self.query(
                 """
                 MERGE (p:Post {id: $id})
@@ -164,7 +166,6 @@ class Neo4jInitializer:
                 }
             )
             
-            # Create Subreddit node and relationship
             if "subreddit" in post_data:
                 self.query(
                     """
@@ -178,8 +179,7 @@ class Neo4jInitializer:
                         "post_id": post_data.get("name", "")
                     }
                 )
-            
-            # Create Author node and relationship
+
             if "author" in post_data and post_data["author"] != "[deleted]":
                 self.query(
                     """
@@ -194,7 +194,6 @@ class Neo4jInitializer:
                     }
                 )
                 
-            # Extract and create Topic nodes
             selftext = post_data.get("selftext", "")
             title = post_data.get("title", "")
             
@@ -216,7 +215,6 @@ class Neo4jInitializer:
                         }
                     )
                     
-                # Extract and create Entity nodes
                 entities = self.extract_entities(combined_text)
                 
                 for entity_type, entity_value in entities:
@@ -249,9 +247,9 @@ class Neo4jInitializer:
 
 if __name__ == "__main__":
     neo4j_initializer = Neo4jInitializer(
-        uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
-        user=os.getenv("NEO4J_USER", "neo4j"),
-        password=os.getenv("NEO4J_PASSWORD", "Sameer4224")
+        uri=os.getenv("NEO4J_URI"),
+        user=os.getenv("NEO4J_USER"),
+        password=os.getenv("NEO4J_PASSWORD")
     )
     
     neo4j_initializer.load_reddit_data("data/data.jsonl")

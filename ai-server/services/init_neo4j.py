@@ -1,11 +1,14 @@
 import os
 from python_types.types import Neo4jConnection
 from services.misc_service import extract_topics_from_text
+from dotenv import load_dotenv
+
+load_dotenv()
 
 neo4j_connection = Neo4jConnection(
-    uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
-    user=os.getenv("NEO4J_USER", "neo4j"),
-    password=os.getenv("NEO4J_PASSWORD", "Sameer4224")
+    uri=os.getenv("NEO4J_URI"),
+    user=os.getenv("NEO4J_USER"),
+    password=os.getenv("NEO4J_PASSWORD")
 )
 
 def create_graph_database(data):

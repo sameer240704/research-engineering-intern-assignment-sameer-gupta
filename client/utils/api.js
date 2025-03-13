@@ -52,3 +52,15 @@ export const sendChatMessage = async (message) => {
     const response = await axios.post(`${API_BASE_URL}/api/chatbot`, { message });
     return response.data;
 };
+
+export const fetchTopicTrends = async (startDate, endDate, subreddits) => {
+    try {
+        const response = await axios.get(`${API_BASE_URL}/api/topic-trends`, {
+            params: { start_date: startDate, end_date: endDate, subreddits },
+        });
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching topic trends:", error);
+        throw error;
+    }
+};

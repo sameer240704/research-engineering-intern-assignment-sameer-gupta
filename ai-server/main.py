@@ -1,15 +1,15 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import json
-from typing import Optional
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 import os
 import groq
 from dotenv import load_dotenv
 from python_types.types import SearchQuery, ChatMessage, Neo4jConnection
-from services.chatbot_service import extract_query_terms, generate_groq_response_with_model, detect_response_length
+from services.chatbot_service import extract_query_terms, detect_response_length
 from services.neo4j_service import query_neo4j_for_general_stats
-from services.misc_service import process_reddit_data, detect_communities
+from services.misc_service import process_reddit_data, detect_communities, filter_json_data
 from services.init_neo4j import create_graph_database
 
 load_dotenv()
@@ -32,6 +32,93 @@ neo4j_connection = Neo4jConnection(
     password=os.getenv("NEO4J_PASSWORD", "Sameer4224")
 )   
 
+def generate_groq_response(prompt: str, model_name: str, max_tokens: int = 1000, max_input_tokens: int = 4000):
+    """Generate response from Groq LLM with token management"""
+
+    def estimate_tokens(text: str) -> int:
+        return len(text) // 4
+    
+    if estimate_tokens(prompt) > max_input_tokens:
+        chars_to_keep = max_input_tokens * 4
+        half_length = chars_to_keep // 2
+        prompt = prompt[:half_length] + "\n...[content truncated for brevity]...\n" + prompt[-half_length:]
+    
+    try:
+        response = groq_client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error calling Groq API: {str(e)}")
+        raise e
+
+def rephrase_query(user_query: str, model_name: str = "llama3-8b-8192") -> Tuple[str, List[str]]:
+    """
+    Rephrase user query to be more specific and extract key search terms.
+    
+    Returns:
+        Tuple[str, List[str]]: (rephrased_query, extracted_keywords)
+    """
+    prompt = f"""
+    You are an expert at improving search queries about Reddit data. Rephrase this query to be more precise:
+    
+    Original query: "{user_query}"
+    
+    Your task:
+    1. Reformulate the query to be more specific and structured
+    2. Extract 3-5 key search terms/keywords from the query
+
+    Format your response exactly like this example:
+    
+    Rephrased query: What is the weekly trend of posts about cryptocurrency in the r/Finance subreddit?
+    Keywords: cryptocurrency, Finance, weekly trend, posts
+    """
+    
+    try:
+        response = generate_groq_response(prompt, model_name, max_tokens=200, max_input_tokens=1000)
+        
+        rephrased_query = ""
+        keywords = []
+        
+        for line in response.split('\n'):
+            if line.startswith("Rephrased query:"):
+                rephrased_query = line.replace("Rephrased query:", "").strip()
+            elif line.startswith("Keywords:"):
+                keywords_text = line.replace("Keywords:", "").strip()
+                keywords = [k.strip() for k in keywords_text.split(',')]
+        
+        if not rephrased_query:
+            rephrased_query = user_query
+            
+        if not keywords:
+            keywords = extract_query_terms(user_query)
+            
+        return rephrased_query, keywords
+    except Exception as e:
+        print(f"Error rephrasing query: {str(e)}")
+        return user_query, extract_query_terms(user_query)
+
+def reduce_data_context(data: Dict[str, Any], max_items: int = 5) -> Dict[str, Any]:
+    """Reduce data context size by limiting number of items"""
+    
+    if not data:
+        return {}
+    
+    reduced_data = {}
+    
+    for key, value in data.items():
+        if isinstance(value, list):
+            reduced_data[key] = value[:max_items]
+            if len(value) > max_items:
+                reduced_data[f"{key}_count"] = len(value)
+        elif isinstance(value, dict):
+            reduced_data[key] = reduce_data_context(value, max_items//2)
+        else:
+            reduced_data[key] = value
+    
+    return reduced_data
 
 @app.post("/api/init-database")
 async def init_database():
@@ -162,14 +249,20 @@ async def get_topic_trends(
         params = {}
             
         if start_date:
-            start_timestamp = datetime.fromisoformat(start_date).timestamp()
-            where_clauses.append("p.created_utc >= $start_timestamp")
-            params["start_timestamp"] = start_timestamp
+            try:
+                start_timestamp = datetime.fromisoformat(start_date).timestamp()
+                where_clauses.append("p.created_utc >= $start_timestamp")
+                params["start_timestamp"] = start_timestamp
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid start_date format. Use ISO format (e.g., 2023-01-01).")
             
         if end_date:
-            end_timestamp = datetime.fromisoformat(end_date).timestamp()
-            where_clauses.append("p.created_utc <= $end_timestamp")
-            params["end_timestamp"] = end_timestamp
+            try:
+                end_timestamp = datetime.fromisoformat(end_date).timestamp()
+                where_clauses.append("p.created_utc <= $end_timestamp")
+                params["end_timestamp"] = end_timestamp
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid end_date format. Use ISO format (e.g., 2023-01-31).")
             
         if subreddits:
             subreddit_list = [s.strip() for s in subreddits.split(",")]
@@ -188,10 +281,16 @@ async def get_topic_trends(
         result = neo4j_connection.query(cypher_query, params)
         
         topic_data = [{"topic": record["topic"], "count": record["count"]} for record in result]
+
+        print(topic_data)
+        
+        if not topic_data:
+            return {"message": "No trending topics found for the given criteria."}
         
         return topic_data
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error fetching topic trends: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while fetching topic trends.")
 
 @app.get("/api/network-graph")
 async def get_network_graph(
@@ -268,6 +367,14 @@ async def get_network_graph(
 async def get_ai_analysis(search_query: SearchQuery):
     """Get AI-powered analysis of the search results."""
     try:
+        rephrased_query, keywords = rephrase_query(search_query.query) if search_query.query else ("", [])
+        
+        print(f"Original query: {search_query.query}")
+        print(f"Rephrased query: {rephrased_query}")
+        print(f"Extracted keywords: {keywords}")
+        
+        search_term = rephrased_query if rephrased_query else search_query.query
+        
         cypher_query = """
         MATCH (p:Post)
         """
@@ -275,9 +382,9 @@ async def get_ai_analysis(search_query: SearchQuery):
         where_clauses = []
         params = {}
         
-        if search_query.query:
+        if search_term:
             where_clauses.append("(p.title CONTAINS $query OR p.selftext CONTAINS $query)")
-            params["query"] = search_query.query
+            params["query"] = search_term
             
         if search_query.start_date:
             start_timestamp = datetime.fromisoformat(search_query.start_date).timestamp()
@@ -298,118 +405,122 @@ async def get_ai_analysis(search_query: SearchQuery):
             
         cypher_query += """
         RETURN p.title as title, p.selftext as selftext, p.score as score
-        LIMIT 20
+        ORDER BY p.score DESC
+        LIMIT 10
         """
         
         result = neo4j_connection.query(cypher_query, params)
         
-        posts = [{"title": record["title"], "content": record["selftext"], "score": record["score"]} for record in result]
+        posts = [{"title": record["title"], "content": record["selftext"][:300], "score": record["score"]} for record in result]
         
-        post_texts = "\n\n".join([f"Title: {post['title']}\nContent: {post['content'][:500]}..." for post in posts])
+        post_texts = "\n\n".join([f"Title: {post['title']}\nScore: {post['score']}\nContent: {post['content']}..." for post in posts])
         
         prompt = f"""
-        Analyze the following Reddit posts related to the query "{search_query.query}":
+        Analyze these Reddit posts related to:
+        Original query: "{search_query.query}"
+        Rephrased query: "{rephrased_query}"
+        Key themes to focus on: {', '.join(keywords) if keywords else 'any relevant themes'}
         
+        Posts:
         {post_texts}
         
-        Please provide:
-        1. A summary of the main themes and narratives
-        2. Key talking points that appear frequently
-        3. The overall sentiment and emotional tone
-        4. Any notable patterns or outliers
-        5. Recommendations for further analysis
-        
-        Be concise and insightful.
+        Provide a concise analysis covering:
+        1. Main themes
+        2. Key points
+        3. Overall sentiment
+        4. Notable patterns
         """
         
-        analysis = generate_groq_response_with_model(prompt, model_name="llama3-8b-8192")
+        analysis = generate_groq_response(prompt, model_name="llama3-8b-8192", max_tokens=1000, max_input_tokens=4000)
         
-        return {"analysis": analysis}
+        return {"analysis": analysis, "rephrased_query": rephrased_query, "keywords": keywords}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
 @app.post("/api/chatbot")
 async def chatbot(message: ChatMessage):
     """
-    Interact with a chatbot that uses two models in sequence:
-    1. gemma2-9b-it to refine the user's prompt
-    2. llama3-8b-8192 to generate the final response based on Neo4j data and JSON file data
+    Interact with a chatbot that first rephrases user queries for better understanding.
     """
     try:
         user_message = message.message
-
         response_length = detect_response_length(user_message)
         
-        query_terms = extract_query_terms(user_message)
+        rephrased_query, keywords = rephrase_query(user_message)
         
-        neo4j_data = query_neo4j_for_general_stats(query_terms)
-        
-        json_file_path = os.path.join("data", "data.json")
+        neo4j_data = {}
         try:
+            if keywords:
+                neo4j_data = query_neo4j_for_general_stats(keywords[:3])  
+        except Exception as e:
+            print(f"Neo4j query error: {str(e)}")
+        
+        filtered_json_data = {}
+        try:
+            json_file_path = os.path.join("data", "processed_data.json")
             with open(json_file_path, 'r') as file:
                 json_data = json.load(file)
+                
+            if keywords:
+                filtered_json_data = filter_json_data(json_data, keywords)
+                filtered_json_data = reduce_data_context(filtered_json_data, max_items=3)  # Limit items
         except Exception as e:
-            print(f"Error loading JSON file: {str(e)}")
-            json_data = {"error": "Could not load JSON data file"}
+            print(f"JSON processing error: {str(e)}")
         
-        refiner_prompt = f"""
-        You are an expert prompt engineer. Your job is to refine the following user question 
-        to help extract the most relevant information from a Neo4j graph database containing Reddit posts.
-
-        User question: {user_message}
-
-        Available data context: 
-        {json.dumps(neo4j_data, indent=2)}
-
-        Additional JSON data:
-        {json.dumps(json_data, indent=2)}
-
-        Please refine this query to:
-        1. Be specific about what data to retrieve from the database
-        2. Clarify ambiguous terms
-        3. Focus on extracting factual information present in the database
-        4. Include specific filtering criteria if implied in the original question
-        5. Ensure the refined query can be answered in ONE SENTENCE if the user requested a concise response
-
-        Return ONLY the refined prompt without explanation or additional text.
-        """
+        combined_data = {
+            "original_query": user_message,
+            "rephrased_query": rephrased_query,
+            "keywords": keywords,
+            "data_summary": {
+                "neo4j_data_available": bool(neo4j_data),
+                "json_data_available": bool(filtered_json_data)
+            }
+        }
         
-        refined_prompt = generate_groq_response_with_model(refiner_prompt, "gemma2-9b-it", 500)
+        if neo4j_data:
+            combined_data["neo4j_highlights"] = neo4j_data
         
-        final_prompt = f"""
-        You are a data analyst assistant specialized in answering questions about Reddit posts data.
+        if filtered_json_data:
+            combined_data["json_highlights"] = filtered_json_data
+            
+        prompt = f"""
+        You are a data analyst assistant for Reddit data. Generate a response to this user query:
         
-        Answer the following question using ONLY the Neo4j data and JSON file data provided below:
+        Original query: "{user_message}"
+        Rephrased for clarity: "{rephrased_query}"
+        Keywords identified: {', '.join(keywords) if keywords else 'None identified'}
         
-        Refined question: {refined_prompt}
-        
-        Database context (Reddit posts data):
-        {json.dumps(neo4j_data, indent=2)}
-        
-        Additional JSON data:
-        {json.dumps(json_data, indent=2)}
+        Available Data:
+        {json.dumps(combined_data, indent=2, default=str)}
         
         Guidelines:
-        - ONLY use information from the provided data contexts
-        - If the data doesn't contain information to answer the question, clearly state that
-        - Format your response in a clear, concise way if the user requested a short answer
-        - Provide detailed analysis if the user requested a detailed answer
-        - Include specific data points from the contexts when possible
-        - If you see patterns or trends in the data, highlight them
-        - DO NOT make up information not present in the data
+        - Only use information present in the provided data
+        - If data is insufficient, acknowledge limitations clearly
+        - {'Keep your answer concise (1-2 short paragraphs max)' if response_length == 'concise' else 'Provide thorough analysis'}
+        - Include specific numbers/stats when available
+        - Do not make up information
+        - Structure your response in a natural, conversational way
+        - If appropriate, suggest follow-up questions the user might want to ask
         """
         
-        final_response = generate_groq_response_with_model(final_prompt, "llama3-8b-8192", 1000)
-
-        if response_length == "concise":
-            final_response = generate_groq_response_with_model(
-                f"Summarize this in one sentence: {final_response}", 
+        try:
+            final_response = generate_groq_response(
+                prompt, 
                 "llama3-8b-8192", 
-                100
+                max_tokens=800 if response_length == 'concise' else 1500,
+                max_input_tokens=4000
             )
+        except Exception as e:
+            print(f"LLM API error: {str(e)}")
+            final_response = "I'm having trouble processing your request due to data size limitations. Could you ask a more specific question about a particular aspect of the Reddit data?"
         
-        return {"response": final_response}
+        return {
+            "response": final_response,
+            "rephrased_query": rephrased_query,
+            "keywords": keywords
+        }
     except Exception as e:
+        print(f"Error in chatbot endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")

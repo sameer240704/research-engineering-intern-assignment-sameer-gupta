@@ -61,3 +61,56 @@ def detect_response_length(user_message):
         return "detailed"
     else:
         return "concise"
+    
+def generate_groq_response_with_file(prompt, file_path, model_name="llama3-8b-8192", max_tokens=1000):
+    """
+    Generate a response from Groq API with a file attachment
+    """
+    try:
+        with open(file_path, 'r') as file:
+            file_content = file.read()
+        
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant that analyzes data."},
+            {"role": "user", "content": [
+                {"type": "text", "text": prompt},
+                {"type": "file_attachment", "file_content": file_content, "file_type": "application/json"}
+            ]}
+        ]
+
+        groq_client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
+        
+        response = groq_client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            max_tokens=max_tokens
+        )
+        
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error in generate_groq_response_with_file: {str(e)}")
+        return f"Error generating response: {str(e)}"
+    
+def generate_groq_response(prompt: str, model_name: str, max_tokens: int = 1000, max_input_tokens: int = 4000):
+    """Generate response from Groq LLM with token management"""
+    
+    def estimate_tokens(text: str) -> int:
+        return len(text) // 4
+    
+    if estimate_tokens(prompt) > max_input_tokens:
+        chars_to_keep = max_input_tokens * 4
+        half_length = chars_to_keep // 2
+        prompt = prompt[:half_length] + "\n...[content truncated for brevity]...\n" + prompt[-half_length:]
+    
+    try:
+        groq_client = GroqClient(api_key=os.getenv("GROQ_API_KEY"))
+        
+        response = groq_client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error calling Groq API: {str(e)}")
+        raise e

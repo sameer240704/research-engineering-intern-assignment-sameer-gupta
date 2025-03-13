@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Loader2 } from "lucide-react";
+import { Send, Bot, User, Loader2, Sparkles, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -32,18 +32,27 @@ const TypewriterEffect = ({ text }) => {
   );
 };
 
+const predefinedPrompts = [
+  "Which subreddit has the highest percentage of negative/positive posts?",
+  "What is the opinion on Donald Trump and give the response in one sentence?",
+  "Which topics saw a sudden spike in discussion?",
+  "What are the trending keywords across multiple subreddits?",
+  "What topics are frequently mentioned with 'AI' in tech-related subreddits?",
+];
+
 export default function Chatbot() {
   const [messages, setMessages] = useState([
     {
       role: "bot",
       content:
-        "Hello! I'm your social data analysis assistant. Ask me questions about the analyzed data or request insights.",
+        "Hello! I'm your social data analysis assistant. Ask me questions about the social media data or use one of the quick prompts below.",
       timestamp: new Date(),
     },
   ]);
   const [inputMessage, setInputMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef(null);
+  const scrollAreaRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -53,13 +62,12 @@ export default function Chatbot() {
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = async () => {
-    if (!inputMessage.trim()) return;
+  const handleSendMessage = async (message = inputMessage) => {
+    if (!message.trim()) return;
 
-    // Add the user's message to the chat
     const userMessage = {
       role: "user",
-      content: inputMessage,
+      content: message,
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userMessage]);
@@ -67,8 +75,7 @@ export default function Chatbot() {
     setIsTyping(true);
 
     try {
-      const data = await sendChatMessage(inputMessage);
-      console.log(data);
+      const data = await sendChatMessage(message);
 
       const botResponse = {
         role: "bot",
@@ -88,6 +95,11 @@ export default function Chatbot() {
     } finally {
       setIsTyping(false);
     }
+  };
+
+  const handlePredefinedPrompt = (prompt) => {
+    setInputMessage(prompt);
+    handleSendMessage(prompt);
   };
 
   const handleKeyDown = (e) => {
@@ -115,34 +127,49 @@ export default function Chatbot() {
   };
 
   return (
-    <div className="flex flex-col h-[500px] bg-slate-50 dark:bg-slate-800/30 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
-      <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-between">
+    <div className="flex flex-col h-[600px] bg-slate-50 dark:bg-slate-800/30 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shadow-lg">
+      <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-indigo-600 to-purple-600 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-full bg-gradient-to-r from-rose-400 to-pink-500 flex items-center justify-center">
-            <Bot className="h-4 w-4 text-white" />
+          <div className="h-10 w-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
+            <Bot className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h3 className="font-medium text-slate-900 dark:text-white">
-              Data Insights Bot
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Powered by AI
-            </p>
+            <h3 className="font-bold text-white">Data Insights Assistant</h3>
+            <p className="text-xs text-indigo-100">Powered by Llama3-8b</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full">
           <span className="flex h-2 w-2 relative">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
           </span>
-          <span className="text-xs text-green-500 dark:text-green-400">
-            Online
-          </span>
+          <span className="text-xs text-white font-medium">Online</span>
         </div>
       </div>
 
-      {/* Chat messages */}
-      <ScrollArea className="flex-1 p-4">
+      <div className="overflow-x-auto p-4 border-b border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50 flex items-center gap-2 flex-nowrap">
+        <Sparkles className="h-4 w-4 text-indigo-500 flex-shrink-0" />
+        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mr-2 flex-shrink-0">
+          Quick Prompts:
+        </p>
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+          {predefinedPrompts.map((prompt, index) => (
+            <Button
+              key={index}
+              variant="outline"
+              size="sm"
+              className="whitespace-nowrap text-xs bg-white dark:bg-slate-700 border-indigo-200 dark:border-slate-600 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-slate-700 dark:text-slate-200 flex-shrink-0"
+              onClick={() => handlePredefinedPrompt(prompt)}
+              disabled={isTyping}
+            >
+              <span className="truncate max-w-xs">{prompt}</span>
+              <ChevronRight className="h-3 w-3 ml-1" />
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1 p-4 overflow-y-scroll" ref={scrollAreaRef}>
         <div className="space-y-4">
           <AnimatePresence>
             {messages.map((message, index) => (
@@ -176,10 +203,10 @@ export default function Chatbot() {
 
                   <div>
                     <div
-                      className={`p-3 rounded-lg ${
+                      className={`p-3 rounded-lg shadow-sm ${
                         message.role === "user"
                           ? "bg-indigo-100 dark:bg-indigo-900/40 text-slate-800 dark:text-slate-100"
-                          : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 shadow-sm"
+                          : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
                       }`}
                     >
                       {message.role === "bot" &&
@@ -244,7 +271,6 @@ export default function Chatbot() {
         </div>
       </ScrollArea>
 
-      {/* Input area */}
       <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
         <div className="flex gap-2">
           <Input
@@ -252,24 +278,24 @@ export default function Chatbot() {
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about your social data analysis..."
-            className="flex-1"
+            className="h-12 flex-1 border-indigo-200 dark:border-slate-600 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
             disabled={isTyping}
           />
           <Button
-            onClick={handleSendMessage}
+            onClick={() => handleSendMessage()}
             disabled={!inputMessage.trim() || isTyping}
-            className="bg-rose-500 hover:bg-rose-600 text-white"
+            className="h-12 w-12 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-md hover:shadow-lg transition-all"
           >
             {isTyping ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              <Send className="h-4 w-4" />
+              <Send className="h-5 w-5" />
             )}
           </Button>
         </div>
         <div className="mt-2 text-xs text-slate-500 dark:text-slate-400 text-center">
-          Ask questions like "What trends do you see in this data?" or
-          "Summarize the key insights"
+          Use prompts above or ask custom questions about social media data
+          analysis
         </div>
       </div>
     </div>

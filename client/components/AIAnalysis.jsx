@@ -4,103 +4,108 @@ import {
   BrainCircuit,
   TrendingUp,
   MessageSquare,
-  AlertTriangle,
   Lightbulb,
-  Download,
-  Share2,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
-const AnalysisDisplay = ({ analysis }) => {
+const AIAnalysisComponent = ({ analysis }) => {
   const [expanded, setExpanded] = useState({});
   const [parsedData, setParsedData] = useState({
     summary: "",
     themes: [],
     talkingPoints: [],
     sentiment: [],
-    patterns: [],
-    recommendations: [],
   });
 
   useEffect(() => {
     if (analysis) {
-      // Parse the analysis text
       const parseAnalysis = (text) => {
         const sections = {
           summary: "",
           themes: [],
           talkingPoints: [],
           sentiment: [],
-          patterns: [],
-          recommendations: [],
         };
 
-        // Extract summary (all text before first numbered list)
-        const summaryMatch = text.match(/^(.*?)(?=\d\.)/s);
+        const summaryMatch = text.match(/^(.*?)(?=\*\*Main Themes)/s);
         if (summaryMatch) {
           sections.summary = summaryMatch[0].trim();
         }
 
-        // Extract themes
         const themesMatch = text.match(
-          /(?:main themes and narratives:)(.*?)(?=\*\*Key talking points)/s
+          /\*\*Main Themes:\*\*(.*?)(?=\*\*Key Points)/s
         );
         if (themesMatch) {
-          sections.themes = extractNumberedPoints(themesMatch[1]);
+          sections.themes = extractBulletPoints(themesMatch[1]);
         }
 
-        // Extract talking points
         const talkingPointsMatch = text.match(
-          /(?:Key talking points:)(.*?)(?=\*\*Overall sentiment)/s
+          /\*\*Key Points:\*\*(.*?)(?=\*\*Overall Sentiment)/s
         );
         if (talkingPointsMatch) {
-          sections.talkingPoints = extractNumberedPoints(talkingPointsMatch[1]);
+          sections.talkingPoints = extractBulletPoints(talkingPointsMatch[1]);
         }
 
-        // Extract sentiment
         const sentimentMatch = text.match(
-          /(?:Overall sentiment and emotional tone:)(.*?)(?=\*\*Notable patterns)/s
+          /\*\*Overall Sentiment:\*\*(.*?)(?=\*\*Notable Patterns)/s
         );
         if (sentimentMatch) {
-          sections.sentiment = extractNumberedPoints(sentimentMatch[1]);
+          sections.sentiment = extractParagraphs(sentimentMatch[1]);
         }
 
-        // Extract patterns
         const patternsMatch = text.match(
-          /(?:Notable patterns or outliers:)(.*?)(?=\*\*Recommendations)/s
+          /\*\*Notable Patterns:\*\*(.*?)(?=Overall, the)/s
         );
         if (patternsMatch) {
-          sections.patterns = extractNumberedPoints(patternsMatch[1]);
+          sections.patterns = extractBulletPoints(patternsMatch[1]);
         }
 
-        // Extract recommendations
-        const recommendationsMatch = text.match(
-          /(?:Recommendations for further analysis:)(.*?)(?=By conducting|$)/s
-        );
-        if (recommendationsMatch) {
-          sections.recommendations = extractNumberedPoints(
-            recommendationsMatch[1]
-          );
+        const conclusionMatch = text.match(/Overall, the(.*?)$/s);
+        if (conclusionMatch) {
+          sections.recommendations = [
+            `Overall, the${conclusionMatch[1].trim()}`,
+          ];
         }
 
         return sections;
       };
 
-      // Helper function to extract numbered points
-      const extractNumberedPoints = (text) => {
+      const extractBulletPoints = (text) => {
         if (!text) return [];
-        const points = [];
-        const pointMatches = text.matchAll(/(\d+\.)\s*(.*?)(?=\d+\.|$)/gs);
 
-        for (const match of pointMatches) {
-          if (match[2]) {
-            points.push(match[2].trim());
+        let bulletMatches = text.match(/\* (.*?)(?=\n\*|\n\n|$)/gs);
+
+        if (!bulletMatches || bulletMatches.length === 0) {
+          const numberedMatches = text.match(/\d+\. (.*?)(?=\n\d+\.|\n\n|$)/gs);
+          if (numberedMatches) {
+            return numberedMatches.map((point) =>
+              point.replace(/^\d+\.\s*/, "").trim()
+            );
           }
+        } else {
+          return bulletMatches.map((point) =>
+            point.replace(/^\*\s*/, "").trim()
+          );
         }
 
-        return points;
+        if (!bulletMatches || bulletMatches.length === 0) {
+          return text
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0);
+        }
+
+        return [];
+      };
+
+      const extractParagraphs = (text) => {
+        if (!text) return [];
+
+        return text
+          .split("\n\n")
+          .map((para) => para.trim())
+          .filter((para) => para.length > 0);
       };
 
       setParsedData(parseAnalysis(analysis));
@@ -115,73 +120,97 @@ const AnalysisDisplay = ({ analysis }) => {
   };
 
   const SectionCard = ({ title, items, icon, color, expandPrefix }) => {
+    const getColorClass = (baseColor) => {
+      const colorMap = {
+        blue: {
+          border: "border-blue-200 dark:border-blue-700",
+          bg: "bg-blue-50 dark:bg-blue-900/20",
+          text: "text-blue-600 dark:text-blue-400",
+          title: "text-blue-900 dark:text-blue-300",
+        },
+        amber: {
+          border: "border-amber-200 dark:border-amber-700",
+          bg: "bg-amber-50 dark:bg-amber-900/20",
+          text: "text-amber-600 dark:text-amber-400",
+          title: "text-amber-900 dark:text-amber-300",
+        },
+        emerald: {
+          border: "border-emerald-200 dark:border-emerald-700",
+          bg: "bg-emerald-50 dark:bg-emerald-900/20",
+          text: "text-emerald-600 dark:text-emerald-400",
+          title: "text-emerald-900 dark:text-emerald-300",
+        },
+        purple: {
+          border: "border-purple-200 dark:border-purple-700",
+          bg: "bg-purple-50 dark:bg-purple-900/20",
+          text: "text-purple-600 dark:text-purple-400",
+          title: "text-purple-900 dark:text-purple-300",
+        },
+        red: {
+          border: "border-red-200 dark:border-red-700",
+          bg: "bg-red-50 dark:bg-red-900/20",
+          text: "text-red-600 dark:text-red-400",
+          title: "text-red-900 dark:text-red-300",
+        },
+      };
+
+      return colorMap[baseColor] || colorMap.blue;
+    };
+
+    const colorClasses = getColorClass(color);
+
     return (
       <div className="space-y-3">
-        {items.map((item, index) => (
-          <div
-            key={index}
-            className={`border border-${color}-200 dark:border-${color}-700 rounded-lg overflow-hidden`}
-          >
-            <div
-              className={`p-3 bg-${color}-50 dark:bg-${color}-900/20 cursor-pointer`}
-              onClick={() => toggleSection(`${expandPrefix}-${index}`)}
-            >
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  {React.cloneElement(icon, {
-                    className: `h-4 w-4 text-${color}-600 dark:text-${color}-400`,
-                  })}
-                  <h4
-                    className={`font-medium text-${color}-900 dark:text-${color}-300 text-sm`}
-                  >
-                    {title} {index + 1}
-                  </h4>
-                </div>
-                {expanded[`${expandPrefix}-${index}`] ? (
-                  <ChevronUp
-                    className={`h-4 w-4 text-${color}-600 dark:text-${color}-400`}
-                  />
-                ) : (
-                  <ChevronDown
-                    className={`h-4 w-4 text-${color}-600 dark:text-${color}-400`}
-                  />
-                )}
-              </div>
-            </div>
-            {expanded[`${expandPrefix}-${index}`] && (
-              <div className="p-3 bg-white dark:bg-slate-800">
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  {item}
-                </p>
-              </div>
-            )}
+        {items.length === 0 ? (
+          <div className={`border ${colorClasses.border} rounded-lg p-4`}>
+            <p className="text-slate-500 dark:text-slate-400 text-sm italic text-center">
+              No {title.toLowerCase()} data available
+            </p>
           </div>
-        ))}
+        ) : (
+          items.map((item, index) => (
+            <div
+              key={index}
+              className={`border ${colorClasses.border} rounded-lg overflow-hidden shadow-sm`}
+            >
+              <div
+                className={`p-3 ${colorClasses.bg} cursor-pointer`}
+                onClick={() => toggleSection(`${expandPrefix}-${index}`)}
+              >
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    {React.cloneElement(icon, {
+                      className: `h-4 w-4 ${colorClasses.text}`,
+                    })}
+                    <h4 className={`font-medium ${colorClasses.title} text-sm`}>
+                      {title} {items.length > 1 ? index + 1 : ""}
+                    </h4>
+                  </div>
+                  {expanded[`${expandPrefix}-${index}`] ? (
+                    <ChevronUp className={`h-4 w-4 ${colorClasses.text}`} />
+                  ) : (
+                    <ChevronDown className={`h-4 w-4 ${colorClasses.text}`} />
+                  )}
+                </div>
+              </div>
+              {expanded[`${expandPrefix}-${index}`] && (
+                <div className="p-3 bg-white dark:bg-slate-800">
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {item}
+                  </p>
+                </div>
+              )}
+            </div>
+          ))
+        )}
       </div>
     );
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between">
-        <h3 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-          <BrainCircuit className="h-5 w-5 text-indigo-500" />
-          AI-Generated Analysis
-        </h3>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="text-xs">
-            <Download className="h-3.5 w-3.5 mr-1.5" />
-            Export
-          </Button>
-          <Button variant="outline" size="sm" className="text-xs">
-            <Share2 className="h-3.5 w-3.5 mr-1.5" />
-            Share
-          </Button>
-        </div>
-      </div>
-
+    <div className="space-y-2">
       <Tabs defaultValue="summary" className="w-full">
-        <TabsList className="grid grid-cols-6">
+        <TabsList className="grid grid-cols-4">
           <TabsTrigger value="summary" className="text-xs">
             Summary
           </TabsTrigger>
@@ -194,16 +223,10 @@ const AnalysisDisplay = ({ analysis }) => {
           <TabsTrigger value="sentiment" className="text-xs">
             Sentiment
           </TabsTrigger>
-          <TabsTrigger value="patterns" className="text-xs">
-            Patterns
-          </TabsTrigger>
-          <TabsTrigger value="recommendations" className="text-xs">
-            Recommendations
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="summary" className="pt-4">
-          <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800/30 rounded-lg p-4">
+          <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800/30 rounded-lg p-4 shadow-sm">
             <div className="flex gap-3">
               <div className="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center flex-shrink-0">
                 <BrainCircuit className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
@@ -212,8 +235,8 @@ const AnalysisDisplay = ({ analysis }) => {
                 <h4 className="font-medium text-indigo-900 dark:text-indigo-300">
                   Analysis Summary
                 </h4>
-                <p className="mt-2 text-indigo-800 dark:text-indigo-200 text-sm leading-relaxed">
-                  {parsedData.summary}
+                <p className="mt-2 text-indigo-800 dark:text-indigo-200 text-sm leading-relaxed whitespace-pre-line">
+                  {analysis || "No summary available."}
                 </p>
               </div>
             </div>
@@ -242,31 +265,11 @@ const AnalysisDisplay = ({ analysis }) => {
 
         <TabsContent value="sentiment" className="pt-4">
           <SectionCard
-            title="Sentiment"
+            title="Sentiment Analysis"
             items={parsedData.sentiment}
             icon={<TrendingUp />}
             color="emerald"
             expandPrefix="sentiment"
-          />
-        </TabsContent>
-
-        <TabsContent value="patterns" className="pt-4">
-          <SectionCard
-            title="Pattern"
-            items={parsedData.patterns}
-            icon={<TrendingUp />}
-            color="purple"
-            expandPrefix="pattern"
-          />
-        </TabsContent>
-
-        <TabsContent value="recommendations" className="pt-4">
-          <SectionCard
-            title="Recommendation"
-            items={parsedData.recommendations}
-            icon={<AlertTriangle />}
-            color="red"
-            expandPrefix="recommendation"
           />
         </TabsContent>
       </Tabs>
@@ -274,4 +277,4 @@ const AnalysisDisplay = ({ analysis }) => {
   );
 };
 
-export default AnalysisDisplay;
+export default AIAnalysisComponent;

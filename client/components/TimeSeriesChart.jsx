@@ -11,7 +11,6 @@ import {
 } from "recharts";
 
 const TimeSeriesChart = ({ data }) => {
-  // Process data to ensure dates are formatted correctly
   const processedData = data.map((item) => ({
     ...item,
     date: new Date(item.date).toLocaleDateString("en-US", {
@@ -20,7 +19,6 @@ const TimeSeriesChart = ({ data }) => {
     }),
   }));
 
-  // Custom tooltip to display date and count
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
