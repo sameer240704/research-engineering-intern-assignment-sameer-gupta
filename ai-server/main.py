@@ -32,9 +32,9 @@ app.add_middleware(
 )
 
 neo4j_connection = Neo4jConnection(
-    uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
-    user=os.getenv("NEO4J_USER", "neo4j"),
-    password=os.getenv("NEO4J_PASSWORD", "Sameer4224")
+    uri=os.getenv("NEO4J_URI"),
+    user=os.getenv("NEO4J_USER"),
+    password=os.getenv("NEO4J_PASSWORD")
 )   
 
 def generate_groq_response(prompt: str, model_name: str, max_tokens: int = 1000, max_input_tokens: int = 4000):
