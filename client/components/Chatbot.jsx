@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Loader2, Sparkles, ChevronRight } from "lucide-react";
+import { Send, Bot, User, Loader2, Sparkles, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -127,7 +127,7 @@ export default function Chatbot() {
   };
 
   return (
-    <div className="flex flex-col h-[600px] bg-slate-50 dark:bg-slate-800/30 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shadow-lg">
+    <div className="flex flex-col h-[1000px] bg-slate-50 dark:bg-slate-800/30 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 shadow-lg">
       <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-indigo-600 to-purple-600 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="h-10 w-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
@@ -147,23 +147,26 @@ export default function Chatbot() {
         </div>
       </div>
 
-      <div className="overflow-x-auto p-4 border-b border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50 flex items-center gap-2 flex-nowrap">
-        <Sparkles className="h-4 w-4 text-indigo-500 flex-shrink-0" />
-        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mr-2 flex-shrink-0">
-          Quick Prompts:
-        </p>
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+      <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50">
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles className="h-4 w-4 text-indigo-500" />
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+            Quick Prompts:
+          </p>
+        </div>
+        <div className="grid grid-cols-5 max-sm:grid-cols-5 gap-2">
           {predefinedPrompts.map((prompt, index) => (
             <Button
               key={index}
               variant="outline"
               size="sm"
-              className="whitespace-nowrap text-xs bg-white dark:bg-slate-700 border-indigo-200 dark:border-slate-600 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-slate-700 dark:text-slate-200 flex-shrink-0"
+              className="text-xs bg-white dark:bg-slate-700 border-indigo-200 dark:border-slate-600 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-slate-700 dark:text-slate-200 justify-start h-auto py-2 text-left"
               onClick={() => handlePredefinedPrompt(prompt)}
               disabled={isTyping}
             >
-              <span className="truncate max-w-xs">{prompt}</span>
-              <ChevronRight className="h-3 w-3 ml-1" />
+              <span className="line-clamp-2">{prompt}</span>
+
+              <ChevronDown className="-rotate-90" />
             </Button>
           ))}
         </div>
@@ -191,7 +194,7 @@ export default function Chatbot() {
                     className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                       message.role === "user"
                         ? "bg-gradient-to-r from-indigo-500 to-purple-500"
-                        : "bg-gradient-to-r from-rose-400 to-pink-500"
+                        : "bg-gradient-to-r from-red-400 to-red-500"
                     }`}
                   >
                     {message.role === "user" ? (
@@ -240,7 +243,7 @@ export default function Chatbot() {
                 className="flex justify-start"
               >
                 <div className="flex gap-3 max-w-[80%]">
-                  <div className="h-8 w-8 rounded-full bg-gradient-to-r from-rose-400 to-pink-500 flex items-center justify-center flex-shrink-0">
+                  <div className="h-8 w-8 rounded-full bg-gradient-to-r from-red-400 to-red-500 flex items-center justify-center flex-shrink-0">
                     <Bot className="h-4 w-4 text-white" />
                   </div>
 

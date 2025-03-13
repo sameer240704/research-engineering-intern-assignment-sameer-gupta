@@ -6,6 +6,7 @@ from collections import Counter
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 load_dotenv()
 
@@ -108,11 +109,11 @@ class Neo4jInitializer:
         
         self.create_constraints_and_indexes()
         
-        batch_size = 100
-        batch = []
+        batch_size = 1000
         total_processed = 0
         
         with open(file_path, 'r', encoding='utf-8') as f:
+            batch = []
             for line in f:
                 try:
                     post = json.loads(line)
@@ -136,114 +137,118 @@ class Neo4jInitializer:
     
     def _process_batch(self, batch):
         """Process a batch of Reddit posts."""
-        for post in batch:
-            if "data" not in post:
-                continue
-                
-            post_data = post["data"]
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(self._process_post, post) for post in batch]
+            for future in as_completed(futures):
+                future.result()
+    
+    def _process_post(self, post):
+        """Process a single Reddit post."""
+        if "data" not in post:
+            return
             
-            if "name" not in post_data:
-                continue
-            
+        post_data = post["data"]
+        
+        if "name" not in post_data:
+            return
+        
+        self.query(
+            """
+            MERGE (p:Post {id: $id})
+            SET p.title = $title, 
+                p.selftext = $selftext, 
+                p.created_utc = $created_utc,
+                p.score = $score,
+                p.num_comments = $num_comments,
+                p.upvote_ratio = $upvote_ratio
+            """,
+            {
+                "id": post_data.get("name", ""),
+                "title": post_data.get("title", ""),
+                "selftext": post_data.get("selftext", ""),
+                "created_utc": post_data.get("created_utc", 0),
+                "score": post_data.get("score", 0),
+                "num_comments": post_data.get("num_comments", 0),
+                "upvote_ratio": post_data.get("upvote_ratio", 0)
+            }
+        )
+        
+        if "subreddit" in post_data:
             self.query(
                 """
-                MERGE (p:Post {id: $id})
-                SET p.title = $title, 
-                    p.selftext = $selftext, 
-                    p.created_utc = $created_utc,
-                    p.score = $score,
-                    p.num_comments = $num_comments,
-                    p.upvote_ratio = $upvote_ratio
+                MERGE (s:Subreddit {name: $name})
+                WITH s
+                MATCH (p:Post {id: $post_id})
+                MERGE (p)-[:POSTED_IN]->(s)
                 """,
                 {
-                    "id": post_data.get("name", ""),
-                    "title": post_data.get("title", ""),
-                    "selftext": post_data.get("selftext", ""),
-                    "created_utc": post_data.get("created_utc", 0),
-                    "score": post_data.get("score", 0),
-                    "num_comments": post_data.get("num_comments", 0),
-                    "upvote_ratio": post_data.get("upvote_ratio", 0)
+                    "name": post_data["subreddit"],
+                    "post_id": post_data.get("name", "")
+                }
+            )
+
+        if "author" in post_data and post_data["author"] != "[deleted]":
+            self.query(
+                """
+                MERGE (a:Author {name: $name})
+                WITH a
+                MATCH (p:Post {id: $post_id})
+                MERGE (p)-[:AUTHORED_BY]->(a)
+                """,
+                {
+                    "name": post_data["author"],
+                    "post_id": post_data.get("name", "")
                 }
             )
             
-            if "subreddit" in post_data:
+        selftext = post_data.get("selftext", "")
+        title = post_data.get("title", "")
+        
+        if selftext or title:
+            combined_text = f"{title} {selftext}"
+            topics = self.extract_topics_from_text(combined_text)
+            
+            for topic in topics:
                 self.query(
                     """
-                    MERGE (s:Subreddit {name: $name})
-                    WITH s
+                    MERGE (t:Topic {name: $name})
+                    WITH t
                     MATCH (p:Post {id: $post_id})
-                    MERGE (p)-[:POSTED_IN]->(s)
+                    MERGE (p)-[:DISCUSSES]->(t)
                     """,
                     {
-                        "name": post_data["subreddit"],
-                        "post_id": post_data.get("name", "")
-                    }
-                )
-
-            if "author" in post_data and post_data["author"] != "[deleted]":
-                self.query(
-                    """
-                    MERGE (a:Author {name: $name})
-                    WITH a
-                    MATCH (p:Post {id: $post_id})
-                    MERGE (p)-[:AUTHORED_BY]->(a)
-                    """,
-                    {
-                        "name": post_data["author"],
+                        "name": topic,
                         "post_id": post_data.get("name", "")
                     }
                 )
                 
-            selftext = post_data.get("selftext", "")
-            title = post_data.get("title", "")
+            entities = self.extract_entities(combined_text)
             
-            if selftext or title:
-                combined_text = f"{title} {selftext}"
-                topics = self.extract_topics_from_text(combined_text)
-                
-                for topic in topics:
-                    self.query(
-                        """
-                        MERGE (t:Topic {name: $name})
-                        WITH t
-                        MATCH (p:Post {id: $post_id})
-                        MERGE (p)-[:DISCUSSES]->(t)
-                        """,
-                        {
-                            "name": topic,
-                            "post_id": post_data.get("name", "")
-                        }
-                    )
-                    
-                entities = self.extract_entities(combined_text)
-                
-                for entity_type, entity_value in entities:
-                    self.query(
-                        """
-                        MERGE (e:Entity {type: $type, value: $value})
-                        WITH e
-                        MATCH (p:Post {id: $post_id})
-                        MERGE (p)-[:CONTAINS]->(e)
-                        """,
-                        {
-                            "type": entity_type,
-                            "value": entity_value,
-                            "post_id": post_data.get("name", "")
-                        }
-                    )
-            
-            self.query(
+            for entity_type, entity_value in entities:
+                self.query(
                     """
-                    MATCH (a1:Author)-[:AUTHORED_BY]->(p1:Post)-[:POSTED_IN]->(s:Subreddit)<-[:POSTED_IN]-(p2:Post)<-[:AUTHORED_BY]-(a2:Author)
-                    WHERE a1.name <> a2.name
-                    MERGE (a1)-[:INTERACTS_WITH]->(a2)
+                    MERGE (e:Entity {type: $type, value: $value})
+                    WITH e
+                    MATCH (p:Post {id: $post_id})
+                    MERGE (p)-[:CONTAINS]->(e)
                     """,
                     {
+                        "type": entity_type,
+                        "value": entity_value,
                         "post_id": post_data.get("name", "")
                     }
                 )
         
-        print(f"Processed batch of {len(batch)} posts")
+        self.query(
+                """
+                MATCH (a1:Author)-[:AUTHORED_BY]->(p1:Post)-[:POSTED_IN]->(s:Subreddit)<-[:POSTED_IN]-(p2:Post)<-[:AUTHORED_BY]-(a2:Author)
+                WHERE a1.name <> a2.name
+                MERGE (a1)-[:INTERACTS_WITH]->(a2)
+                """,
+                {
+                    "post_id": post_data.get("name", "")
+                }
+            )
 
 if __name__ == "__main__":
     neo4j_initializer = Neo4jInitializer(

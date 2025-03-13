@@ -1,4 +1,3 @@
-from python_types.types import ChatMessage
 from groq import Client as GroqClient
 import os
 from dotenv import load_dotenv
@@ -44,7 +43,6 @@ def generate_groq_response_with_model(prompt, model_name, max_tokens=1000):
     except Exception as e:
         return f"Error generating response with {model_name}: {str(e)}"
     
-# This function is just for better user answer as user can ask for short or detailed answers
 def detect_response_length(user_message):
     """
     Detect whether the user wants a concise or detailed response based on their prompt.

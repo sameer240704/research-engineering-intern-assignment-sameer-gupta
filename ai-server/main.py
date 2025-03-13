@@ -11,6 +11,11 @@ from services.chatbot_service import extract_query_terms, detect_response_length
 from services.neo4j_service import query_neo4j_for_general_stats
 from services.misc_service import process_reddit_data, detect_communities, filter_json_data
 from services.init_neo4j import create_graph_database
+import nltk
+
+nltk.download("punkt")
+nltk.download("punkt_tab")
+nltk.download("stopwords")
 
 load_dotenv()
 
@@ -281,8 +286,6 @@ async def get_topic_trends(
         result = neo4j_connection.query(cypher_query, params)
         
         topic_data = [{"topic": record["topic"], "count": record["count"]} for record in result]
-
-        print(topic_data)
         
         if not topic_data:
             return {"message": "No trending topics found for the given criteria."}
@@ -368,10 +371,6 @@ async def get_ai_analysis(search_query: SearchQuery):
     """Get AI-powered analysis of the search results."""
     try:
         rephrased_query, keywords = rephrase_query(search_query.query) if search_query.query else ("", [])
-        
-        print(f"Original query: {search_query.query}")
-        print(f"Rephrased query: {rephrased_query}")
-        print(f"Extracted keywords: {keywords}")
         
         search_term = rephrased_query if rephrased_query else search_query.query
         
