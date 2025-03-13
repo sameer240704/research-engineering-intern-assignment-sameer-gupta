@@ -1,4 +1,3 @@
-import community
 from collections import Counter
 import networkx as nx
 import re
@@ -42,20 +41,33 @@ def _is_repetitive_or_noisy(word):
 
 def detect_communities(nodes, links):
     """Detect communities in the network graph."""
-    graph = nx.Graph()
-    
-    for node in nodes:
-        graph.add_node(node["id"], group=node["group"])
-    
-    for link in links:
-        graph.add_edge(link["source"], link["target"], weight=link["value"])
-    
-    partition = community.best_partition(graph)
-    
-    for node in nodes:
-        node["community"] = partition[node["id"]]
-    
-    return nodes
+    try:
+        import networkx as nx
+        try:
+            from community import best_partition
+        except ImportError:
+            import community
+            best_partition = community.best_partition
+        
+        graph = nx.Graph()
+        
+        for node in nodes:
+            graph.add_node(node["id"], group=node["group"])
+        
+        for link in links:
+            graph.add_edge(link["source"], link["target"], weight=link["value"])
+        
+        partition = best_partition(graph)
+        
+        for node in nodes:
+            node["community"] = partition[node["id"]]
+        
+        return nodes
+    except ImportError as e:
+        print(f"Community detection unavailable: {str(e)}")
+        for node in nodes:
+            node["community"] = node["group"]
+        return nodes
 
 def process_reddit_data(jsonl_file="data/data.jsonl"):
     """Process the Reddit data from a JSONL file."""

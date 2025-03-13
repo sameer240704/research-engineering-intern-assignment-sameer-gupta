@@ -240,12 +240,11 @@ export default function Home() {
               >
                 {loading ? (
                   <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />{" "}
-                    Processing...
+                    <RefreshCw className="h-4 w-4 animate-spin" /> Processing...
                   </>
                 ) : (
                   <>
-                    <Search className="mr-2 h-4 w-4" /> Analyze
+                    <Search className="h-4 w-4" /> Analyze
                   </>
                 )}
               </Button>

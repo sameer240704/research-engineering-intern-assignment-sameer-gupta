@@ -360,12 +360,22 @@ async def get_network_graph(
         for subreddit in subreddit_nodes:
             nodes.append({"id": subreddit, "group": 2, "type": "subreddit"})
         
-        nodes = detect_communities(nodes, links)
+        try:
+            nodes = detect_communities(nodes, links)
+        except ImportError:
+            for node in nodes:
+                node["community"] = node["group"]  
         
         return {"nodes": nodes, "links": links}
     except Exception as e:
+        import traceback
+        error_detail = {
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        }
+        print(f"Network Graph Error: {error_detail}")
         raise HTTPException(status_code=500, detail=str(e))
-
+    
 @app.post("/api/ai-analysis")
 async def get_ai_analysis(search_query: SearchQuery):
     """Get AI-powered analysis of the search results."""

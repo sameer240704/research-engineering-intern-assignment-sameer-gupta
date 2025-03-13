@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Social Media Analysis",
+  title: "Social Media Analyzer",
   description: "Research Intern Project - SIMPPL",
 };
 
