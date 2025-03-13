@@ -2,6 +2,8 @@
 
 # Social Media Analyzer
 
+[![Python](https://img.shields.io/badge/Python-3.11+-yellow.svg)](https://www.python.org/)
+
 ![System Overview](images/system_overview.png)
 
 ## Introduction
@@ -12,6 +14,12 @@ The project is structured into two main components:
 
 - **Client**: Frontend interface for visualization and interaction.
 - **AI Server**: Backend processing using NLP, Graph RAG with Neo4j, and AI analysis.
+
+## 📺 Demo
+
+[![Social Media Analyzer Demo](https://img.shields.io/badge/Watch-Demo-red)](https://youtu.be/m1fgB3OcYRQ?feature=shared)
+
+> 🎥 Click the badge above to watch Social Media Analyzer in action!
 
 ## Features
 
@@ -141,11 +149,5 @@ npm run dev
 ## Contributing
 
 Feel free to contribute by opening issues or submitting pull requests!
-
-## License
-
-This project is licensed under the MIT License.
-
----
 
 **Author:** [Sameer Gupta](https://github.com/sameer240704)
