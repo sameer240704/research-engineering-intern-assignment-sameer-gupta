@@ -36,7 +36,6 @@ import {
   Search,
   RefreshCw,
   BarChart3,
-  Filter,
   LineChart,
   PieChart,
   Network,
@@ -152,9 +151,9 @@ export default function Home() {
             <div className="flex flex-wrap gap-2">
               <Dialog open={filterOpen} onOpenChange={setFilterOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="gap-2">
-                    <Filter className="h-4 w-4" />
-                    Filters
+                  <Button variant="outline" className="gap-2 cursor-pointer">
+                    <Search className="h-4 w-4" />
+                    Search
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[500px]">
@@ -235,7 +234,7 @@ export default function Home() {
 
               <Button
                 onClick={handleSearch}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
                 disabled={loading}
               >
                 {loading ? (
